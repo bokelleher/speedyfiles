@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}API tokens{% endblock %}
+{% block content %}
+<p class="muted"><a href="/account">← account</a></p>
+<h1>API tokens</h1>
+<p class="muted">Use these for programmatic access to the SpeedyFiles API. See <a href="/api/v1/docs">/api/v1/docs</a> for the OpenAPI reference.</p>
+
+{% if new_token %}
+<div class="panel" style="border-color:var(--accent); background:rgba(94,198,255,0.05)">
+  <h2 style="margin-top:0">Your new token</h2>
+  <p class="muted">Copy this <b>now</b>. It will not be shown again.</p>
+  <pre style="background:var(--bg); padding:14px; border-radius:6px; word-break:break-all">{{ new_token }}</pre>
+  <p class="muted" style="font-size:13px">Example usage:</p>
+  <pre style="background:var(--bg); padding:10px 14px; border-radius:6px; font-size:12px">curl -H "Authorization: Bearer {{ new_token }}" \
+     https://{{ request.url.hostname }}/api/v1/me</pre>
+</div>
+{% endif %}
+
+<h2>Existing tokens</h2>
+{% if tokens %}
+<div class="panel" style="padding:0">
+<table>
+  <thead><tr><th>Name</th><th>Prefix</th><th>Created</th><th>Last used</th><th>Expires</th><th>State</th><th></th></tr></thead>
+  <tbody>
+  {% for t in tokens %}
+    <tr>
+      <td>{{ t.name }}</td>
+      <td class="mono">{{ t.prefix }}…</td>
+      <td>{{ t.created_at.strftime('%Y-%m-%d') }}</td>
+      <td>{{ t.last_used_at.strftime('%Y-%m-%d %H:%M') if t.last_used_at else '—' }}</td>
+      <td>{{ t.expires_at.strftime('%Y-%m-%d') if t.expires_at else 'never' }}</td>
+      <td>
+        {% if t.revoked_at %}<span class="pill pill-revoked">revoked</span>
+        {% elif t.expires_at and t.expires_at <= request.state.now if request.state and request.state.now else False %}<span class="pill pill-expired">expired</span>
+        {% else %}<span class="pill pill-active">active</span>{% endif %}
+      </td>
+      <td>
+        {% if not t.revoked_at %}
+        <form method="post" action="/account/tokens/{{ t.id }}/revoke?_csrf={{ csrf_token(request) }}" class="inline"
+              onsubmit="return confirm('Revoke token: {{ t.name }}?');">
+          <button class="btn btn-danger" type="submit" style="padding:4px 10px">Revoke</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="panel"><p class="muted">No tokens yet.</p></div>
+{% endif %}
+
+<h2>Create a new token</h2>
+<div class="panel" style="max-width:520px">
+<form method="post" action="/account/tokens?_csrf={{ csrf_token(request) }}">
+  <label>Name (helps you remember what it's for)</label>
+  <input type="text" name="name" required maxlength="128" placeholder="e.g. CI deployment script">
+  <label>Expires in (days, optional)</label>
+  <input type="number" name="expires_in_days" min="1" max="3650" placeholder="(blank = never expires)">
+  <div style="margin-top:16px"><button class="btn btn-primary" type="submit">Create token</button></div>
+</form>
+</div>
+{% endblock %}

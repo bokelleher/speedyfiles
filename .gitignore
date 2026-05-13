@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+.python-version
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Data / runtime
+data/
+files/
+*.db
+*.db-shm
+*.db-wal
+logs/
+*.log
+
+# Secrets
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+secrets.toml
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# Local dev artifacts
+node_modules/
+.next/
+.nuxt/
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# SpeedyFiles-specific
+/app/static/uploads/
+/srv/files/

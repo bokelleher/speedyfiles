@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Account{% endblock %}
+{% block content %}
+<h1>Account</h1>
+<div class="panel" style="max-width:520px">
+  <div style="margin-bottom:12px">
+    <div><b>{{ user.display_name }}</b> &lt;{{ user.email }}&gt;</div>
+    <div class="muted" style="font-size:12px">Role: {{ user.role }}{% if user.last_login_at %} · Last login {{ user.last_login_at.strftime('%Y-%m-%d %H:%M UTC') }}{% endif %}</div>
+  </div>
+  <div><a href="/account/tokens" class="btn">API tokens →</a></div>
+</div>
+
+<h2>Change password</h2>
+<div class="panel" style="max-width:520px">
+  {% if message %}<div class="alert" style="background:rgba(111,207,151,0.1); border-color:var(--good); color:var(--good)">{{ message }}</div>{% endif %}
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/account/password?_csrf={{ csrf_token(request) }}" autocomplete="off">
+    <label>Current password</label>
+    <input type="password" name="current_password" required autocomplete="current-password">
+    <label>New password</label>
+    <input type="password" name="new_password" required minlength="10" autocomplete="new-password">
+    <p class="muted" style="font-size:12px; margin:4px 0 0 0">At least 10 characters.</p>
+    <label>Confirm new password</label>
+    <input type="password" name="confirm_password" required minlength="10" autocomplete="new-password">
+    <div style="margin-top:16px"><button class="btn btn-primary" type="submit">Update password</button></div>
+  </form>
+</div>
+{% endblock %}

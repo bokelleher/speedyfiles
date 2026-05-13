@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div style="max-width:380px; margin:60px auto 12px auto; text-align:center">
+  <img src="/static/logo.png" alt="SpeedyFiles" style="max-width:240px; width:80%; height:auto"
+       onerror="this.style.display='none'">
+</div>
+<div class="panel" style="max-width:380px; margin:0 auto;">
+  <h1>Sign in</h1>
+  {% if request.query_params.get('reset') %}
+    <div class="alert" style="background:rgba(111,207,151,0.1); border-color:var(--good); color:var(--good)">Password updated. Sign in with your new password.</div>
+  {% endif %}
+  {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+  <form method="post" action="/login">
+    <label>Email</label>
+    <input type="email" name="email" required autofocus>
+    <label>Password</label>
+    <input type="password" name="password" required>
+    <div style="margin-top:16px; display:flex; align-items:center; gap:12px">
+      <button class="btn btn-primary" type="submit">Sign in</button>
+      <a href="/forgot" style="font-size:13px">Forgot password?</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

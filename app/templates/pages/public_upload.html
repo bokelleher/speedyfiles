@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}Upload — {{ pkg.title }}{% endblock %}
+{% block content %}
+<div style="max-width:780px; margin:24px auto 12px auto; text-align:center">
+  <img src="/static/logo.png" alt="techex.lab" style="max-width:200px; width:60%; height:auto"
+       onerror="this.style.display='none'">
+</div>
+<div class="panel" style="max-width:780px; margin:0 auto">
+  <h1>{{ pkg.title }}</h1>
+  <p class="muted">Requested from {{ pkg.recipient_name }} — link expires {{ pkg.expires_at.strftime('%Y-%m-%d %H:%M UTC') }}</p>
+  {% if pkg.note %}<div style="white-space:pre-wrap; margin:12px 0; padding:10px; border-left:3px solid var(--accent); background:rgba(79,158,237,0.05)">{{ pkg.note }}</div>{% endif %}
+
+  <h2>Already uploaded ({{ files|length }})</h2>
+  <div id="uploaded">
+  {% for f in files %}
+    <div class="file-row"><div style="flex:1">{{ f.original_name }}<br><span class="muted" style="font-size:12px">{{ f.size_bytes|bytes }}</span></div></div>
+  {% endfor %}
+  {% if not files %}<p class="muted">No files yet.</p>{% endif %}
+  </div>
+
+  <h2>Upload files</h2>
+  <input type="file" id="picker" multiple>
+  <div id="uploads"></div>
+  <p class="muted" style="font-size:12px">Files are uploaded one at a time. Don't close this tab.</p>
+</div>
+
+<script>
+const token = {{ token|tojson }};
+const picker = document.getElementById('picker');
+const uploads = document.getElementById('uploads');
+const uploaded = document.getElementById('uploaded');
+
+picker.addEventListener('change', async (e) => {
+  for (const file of e.target.files) {
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = `<div style="flex:1">${file.name}<br>
+      <span class="muted" style="font-size:12px">${humanSize(file.size)} <span class="stats"></span></span>
+      <div class="progress"><div style="width:0%"></div></div></div>
+      <span class="status muted" style="min-width:80px;text-align:right">queued</span>`;
+    uploads.appendChild(row);
+    await uploadOne(file, row);
+  }
+  picker.value = '';
+});
+
+function humanSize(n){
+  const u=['B','KB','MB','GB','TB']; let i=0; while(n>=1024 && i<u.length-1){n/=1024;i++;}
+  return n.toFixed(i?1:0)+' '+u[i];
+}
+function fmtDuration(ms){
+  if (ms < 1000) return ms + ' ms';
+  const s = ms / 1000;
+  if (s < 60) return s.toFixed(1) + 's';
+  const totSec = Math.round(s);
+  const m = Math.floor(totSec/60), sec = totSec % 60;
+  if (m < 60) return m + 'm ' + sec + 's';
+  const h = Math.floor(m/60), rm = m % 60;
+  return h + 'h ' + rm + 'm ' + sec + 's';
+}
+
+function uploadOne(file, row){
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    const form = new FormData();
+    form.append('file', file);
+    const bar = row.querySelector('.progress > div');
+    const status = row.querySelector('.status');
+    const stats = row.querySelector('.stats');
+    status.textContent = 'uploading…';
+    let lastBytes = 0, lastT = performance.now();
+    xhr.upload.onprogress = (ev) => {
+      if (!ev.lengthComputable) return;
+      bar.style.width = (ev.loaded/ev.total*100).toFixed(1)+'%';
+      const now = performance.now();
+      const dt = (now - lastT) / 1000;
+      if (dt > 0.5) {
+        const bps = (ev.loaded - lastBytes) / dt;
+        stats.textContent = humanSize(bps) + '/s';
+        lastBytes = ev.loaded; lastT = now;
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status === 200) {
+        bar.style.width = '100%';
+        let dur = null;
+        try { const j = JSON.parse(xhr.responseText); dur = j.duration_ms; } catch(e) {}
+        status.textContent = '✓ done';
+        if (dur != null) {
+          const bps = file.size * 1000 / Math.max(dur, 1);
+          stats.textContent = 'Transferred ' + humanSize(file.size) + ' in '
+                            + fmtDuration(dur) + ' (' + humanSize(bps) + '/s)';
+        }
+        const done = document.createElement('div');
+        done.className = 'file-row';
+        done.innerHTML = `<div style="flex:1">${file.name}<br>
+          <span class="muted" style="font-size:12px">${humanSize(file.size)}${dur!=null
+            ? ' &middot; ' + fmtDuration(dur) + ' (' + humanSize(file.size * 1000 / Math.max(dur,1)) + '/s)'
+            : ''}</span></div>`;
+        uploaded.appendChild(done);
+      } else {
+        status.innerHTML = '<span class="danger">failed ('+xhr.status+')</span>';
+      }
+      resolve();
+    };
+    xhr.onerror = () => { status.innerHTML = '<span class="danger">network error</span>'; resolve(); };
+    xhr.open('POST', '/p/'+encodeURIComponent(token)+'/upload');
+    xhr.send(form);
+  });
+}
+</script>
+{% endblock %}

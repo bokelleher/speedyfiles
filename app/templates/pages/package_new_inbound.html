@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Request upload{% endblock %}
+{% block content %}
+<h1>Request files from a customer</h1>
+<div class="panel" style="max-width:680px">
+<form method="post" action="/dash/packages/new/inbound?_csrf={{ csrf_token(request) }}">
+  <label>Title</label>
+  <input type="text" name="title" required placeholder="e.g. Submit master files for QC">
+  <div class="row">
+    <div>
+      <label>Recipient name</label>
+      <input type="text" name="recipient_name" required>
+    </div>
+    <div>
+      <label>Recipient email</label>
+      <input type="email" name="recipient_email" required>
+    </div>
+  </div>
+  <label>Note (optional, included in email)</label>
+  <textarea name="note" rows="3"></textarea>
+  <div class="row">
+    <div>
+      <label>Link expires in (days)</label>
+      <input type="number" name="ttl_days" value="{{ default_ttl_days }}" min="1" max="90" required>
+    </div>
+  </div>
+  <div style="margin-top:16px">
+    <button class="btn btn-primary" type="submit">Send invite</button>
+    <a class="btn" href="/dash">Cancel</a>
+  </div>
+</form>
+</div>
+{% endblock %}

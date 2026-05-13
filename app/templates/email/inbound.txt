@@ -1,0 +1,12 @@
+Hi {{ to_name }},
+
+{{ sender_name }} is requesting files from you on {{ app_name }}.
+
+Request: {{ package_title }}
+{% if note %}Note from sender:
+{{ note }}
+
+{% endif %}Upload here (link expires {{ expires_at }}):
+{{ link_url }}
+
+You can upload multiple files; the link remains valid until expiry.

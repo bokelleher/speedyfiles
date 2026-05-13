@@ -1,0 +1,56 @@
+# SpeedyFiles systemd unit template
+#
+# For bare-metal installs (without Docker). Install to:
+#   /etc/systemd/system/speedyfiles.service
+# Then:
+#   systemctl daemon-reload
+#   systemctl enable --now speedyfiles
+#
+# Assumes:
+#   - App at /opt/speedyfiles  (clone of this repo)
+#   - venv at /opt/speedyfiles/.venv
+#   - .env at /opt/speedyfiles/.env (mode 0640, owned by speedyfiles:speedyfiles)
+#   - Service user `speedyfiles` created with: useradd --system --no-create-home \
+#       --shell /usr/sbin/nologin --home-dir /opt/speedyfiles --user-group speedyfiles
+#   - /srv/files exists and is owned by speedyfiles:speedyfiles
+
+[Unit]
+Description=SpeedyFiles file-sharing service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=speedyfiles
+Group=speedyfiles
+WorkingDirectory=/opt/speedyfiles
+EnvironmentFile=/opt/speedyfiles/.env
+UMask=0027
+
+ExecStart=/opt/speedyfiles/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 5300 \
+    --forwarded-allow-ips 127.0.0.1 \
+    --proxy-headers
+
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+ReadWritePaths=/srv/files /opt/speedyfiles/data /opt/speedyfiles/logs
+
+[Install]
+WantedBy=multi-user.target

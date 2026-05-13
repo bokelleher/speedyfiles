@@ -1,0 +1,12 @@
+Hi {{ to_name }},
+
+{{ sender_name }} has shared {{ file_count }} file{{ '' if file_count == 1 else 's' }} with you on {{ app_name }}.
+
+Package: {{ package_title }}
+{% if note %}Note from sender:
+{{ note }}
+
+{% endif %}Download here (link expires {{ expires_at }}):
+{{ link_url }}
+
+If you weren't expecting this, you can safely ignore this message.

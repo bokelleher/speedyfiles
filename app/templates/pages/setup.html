@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Setup — SpeedyFiles{% endblock %}
+{% block content %}
+<div style="max-width:680px; margin:24px auto 0 auto; text-align:center">
+  <img src="/static/logo.png" alt="SpeedyFiles" style="max-width:240px; width:60%; height:auto" onerror="this.style.display='none'">
+</div>
+<div class="panel" style="max-width:680px; margin:20px auto;">
+<h1 style="text-align:center">Welcome to SpeedyFiles</h1>
+<p class="muted" style="text-align:center">Let's set up your instance. This wizard runs once.</p>
+
+{% if error %}<div class="alert">{{ error }}</div>{% endif %}
+
+<form method="post" action="/setup" autocomplete="off">
+  <h2 style="margin-top:0">1. Admin account</h2>
+  <div class="row">
+    <div>
+      <label>Your name</label>
+      <input type="text" name="admin_name" required placeholder="e.g. Jane Doe">
+    </div>
+    <div>
+      <label>Your email</label>
+      <input type="email" name="admin_email" required placeholder="you@example.com">
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Password</label>
+      <input type="password" name="admin_password" required minlength="10" autocomplete="new-password">
+    </div>
+    <div>
+      <label>Confirm password</label>
+      <input type="password" name="admin_password_confirm" required minlength="10" autocomplete="new-password">
+    </div>
+  </div>
+  <p class="muted" style="font-size:12px">At least 10 characters.</p>
+
+  <h2>2. Site identity</h2>
+  <div class="row">
+    <div>
+      <label>Site name</label>
+      <input type="text" name="site_name" required value="{{ site_name }}" placeholder="Acme Files">
+    </div>
+    <div>
+      <label>Public base URL</label>
+      <input type="url" name="public_base_url" required value="{{ public_url }}" placeholder="https://files.example.com">
+    </div>
+  </div>
+  <p class="muted" style="font-size:12px">This is the URL recipients will see in their magic-link emails.</p>
+
+  <h2>3. Mail (optional — you can configure later)</h2>
+  <p class="muted" style="font-size:13px">Skip this and configure under Settings → Mail after first login. SpeedyFiles needs SMTP to send package notifications.</p>
+  <div class="row">
+    <div style="flex:2">
+      <label>SMTP host</label>
+      <input type="text" name="smtp_host" placeholder="smtp.example.com (leave blank to skip)">
+    </div>
+    <div>
+      <label>Port</label>
+      <input type="number" name="smtp_port" value="587" min="1" max="65535">
+    </div>
+  </div>
+  <label>Encryption</label>
+  <select name="smtp_security">
+    <option value="starttls" selected>STARTTLS (port 587)</option>
+    <option value="tls">Implicit TLS (port 465)</option>
+    <option value="none">None (loopback only)</option>
+  </select>
+  <div class="row">
+    <div>
+      <label>SMTP username (optional)</label>
+      <input type="text" name="smtp_username" placeholder="username or API token">
+    </div>
+    <div>
+      <label>SMTP password (optional)</label>
+      <input type="password" name="smtp_password" autocomplete="new-password">
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>From name</label>
+      <input type="text" name="mail_from_name" placeholder="Acme Files">
+    </div>
+    <div>
+      <label>From address</label>
+      <input type="email" name="mail_from_address" placeholder="files@example.com">
+    </div>
+  </div>
+
+  <div style="margin-top:24px">
+    <button class="btn btn-primary" type="submit">Complete setup</button>
+  </div>
+</form>
+</div>
+{% endblock %}

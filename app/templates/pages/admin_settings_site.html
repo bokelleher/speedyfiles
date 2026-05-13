@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Site settings{% endblock %}
+{% block content %}
+<p class="muted"><a href="/admin/settings">← all settings</a></p>
+<h1>Site identity</h1>
+{% if request.query_params.get('saved') %}
+<div class="alert" style="background:rgba(111,207,151,0.1); border-color:var(--good); color:var(--good)">Settings saved.</div>
+{% endif %}
+<div class="panel" style="max-width:680px">
+<form method="post" action="/admin/settings/site?_csrf={{ csrf_token(request) }}">
+  <label>Site name</label>
+  <input type="text" name="site_name" required maxlength="128"
+         value="{{ cfg.get('name', fallback_name) }}">
+  <p class="muted" style="font-size:12px; margin:4px 0 0 0">Shown in email subject lines and the browser tab.</p>
+
+  <label>Public base URL</label>
+  <input type="url" name="public_base_url" required
+         value="{{ cfg.get('public_base_url', fallback_url) }}">
+  <p class="muted" style="font-size:12px; margin:4px 0 0 0">The URL recipients see in their magic-link emails. Include the scheme (<code>https://</code>).</p>
+
+  <label>Support email (optional)</label>
+  <input type="email" name="support_email" value="{{ cfg.get('support_email', '') }}"
+         placeholder="support@your-domain.com">
+
+  <label>Primary accent color (CSS hex)</label>
+  <input type="text" name="primary_color" value="{{ cfg.get('primary_color', '#4f9eed') }}"
+         pattern="#[0-9a-fA-F]{6}" placeholder="#4f9eed">
+
+  <div style="margin-top:16px"><button class="btn btn-primary" type="submit">Save</button></div>
+</form>
+</div>
+
+<h2>Logo</h2>
+<div class="panel" style="max-width:680px">
+  <p class="muted" style="font-size:14px">Drop a PNG (recommended) or SVG at <code>app/static/logo.png</code> on the host. No app restart needed — refresh the page.</p>
+  <p class="muted" style="font-size:13px">Current:</p>
+  <img src="/static/logo.png" alt="current logo" style="max-height:40px; max-width:300px; background:rgba(255,255,255,0.05); padding:8px; border-radius:6px">
+</div>
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Mail settings{% endblock %}
+{% block content %}
+<p class="muted"><a href="/admin/settings">← all settings</a></p>
+<h1>Mail server</h1>
+
+{% if request.query_params.get('saved') %}
+  <div class="alert" style="background:rgba(111,207,151,0.1); border-color:var(--good); color:var(--good)">Settings saved.</div>
+{% endif %}
+{% if test_result %}
+  {% if test_result.ok %}
+    <div class="alert" style="background:rgba(111,207,151,0.1); border-color:var(--good); color:var(--good)">{{ test_result.message }}</div>
+  {% else %}
+    <div class="alert">Test send failed: {{ test_result.message }}</div>
+  {% endif %}
+{% endif %}
+
+<div class="panel" style="max-width:780px">
+<form method="post" action="/admin/settings/mail?_csrf={{ csrf_token(request) }}" autocomplete="off">
+  <h2 style="margin-top:0">Connection</h2>
+  <div class="row">
+    <div style="flex:2">
+      <label>SMTP host</label>
+      <input type="text" name="host" required value="{{ cfg.get('host', '127.0.0.1') }}"
+             placeholder="smtp.example.com">
+    </div>
+    <div>
+      <label>Port</label>
+      <input type="number" name="port" required min="1" max="65535"
+             value="{{ cfg.get('port', 587) }}">
+    </div>
+  </div>
+  <label>Encryption</label>
+  <select name="security">
+    {% set sec = cfg.get('security', 'starttls') %}
+    <option value="starttls" {% if sec=='starttls' %}selected{% endif %}>STARTTLS (recommended, port 587)</option>
+    <option value="tls"      {% if sec=='tls'      %}selected{% endif %}>Implicit TLS (port 465)</option>
+    <option value="none"     {% if sec=='none'     %}selected{% endif %}>None (plaintext — only for localhost / trusted networks)</option>
+  </select>
+
+  <h2>Authentication</h2>
+  <label>Method</label>
+  <select name="auth_method" onchange="document.getElementById('authbox').style.display = this.value === 'none' ? 'none' : 'block';">
+    {% set am = cfg.get('auth_method', 'none') %}
+    <option value="none"  {% if am=='none'  %}selected{% endif %}>None (e.g. localhost relay)</option>
+    <option value="login" {% if am=='login' %}selected{% endif %}>AUTH LOGIN (most providers)</option>
+    <option value="plain" {% if am=='plain' %}selected{% endif %}>AUTH PLAIN</option>
+  </select>
+  <div id="authbox" style="display:{{ 'none' if cfg.get('auth_method','none')=='none' else 'block' }}">
+    <div class="row">
+      <div>
+        <label>Username</label>
+        <input type="text" name="username" value="{{ cfg.get('username', '') }}" autocomplete="off">
+      </div>
+      <div>
+        <label>Password</label>
+        <input type="password" name="password" autocomplete="new-password"
+               placeholder="{% if cfg.get('username') %}(unchanged — leave blank to keep){% else %}new password{% endif %}">
+        {% if cfg.get('username') %}<input type="hidden" name="keep_password" id="kpw" value="1">
+        <p class="muted" style="font-size:11px; margin:4px 0 0 0">Leave blank to keep existing password.</p>
+        <script>document.querySelector('input[name=password]').addEventListener('input',function(){document.getElementById('kpw').value = this.value ? '' : '1';});</script>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <h2>Identity</h2>
+  <div class="row">
+    <div>
+      <label>From name</label>
+      <input type="text" name="from_name" value="{{ cfg.get('from_name', '') }}"
+             placeholder="SpeedyFiles">
+    </div>
+    <div>
+      <label>From address</label>
+      <input type="email" name="from_address" required value="{{ cfg.get('from_address', '') }}"
+             placeholder="noreply@example.com">
+    </div>
+  </div>
+  <label>HELO / EHLO hostname (optional)</label>
+  <input type="text" name="helo" value="{{ cfg.get('helo', '') }}"
+         placeholder="(defaults to From-address domain)">
+  <p class="muted" style="font-size:12px; margin:4px 0 0 0">
+    Some receivers cross-check HELO against the source IP's PTR record. If you have rDNS set up,
+    match it here (e.g. <code>mail.example.com</code>).
+  </p>
+
+  <div style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+    <button class="btn btn-primary" type="submit">Save</button>
+    <a class="btn" href="/admin/settings">Cancel</a>
+  </div>
+</form>
+</div>
+
+<h2>Send test email</h2>
+<div class="panel" style="max-width:780px">
+  <p class="muted" style="font-size:12px; margin-top:0">Sends a verification message using the saved settings. Save first, then test.</p>
+  <form method="post" action="/admin/settings/mail/test?_csrf={{ csrf_token(request) }}">
+    <div class="row" style="align-items:end">
+      <div style="flex:2">
+        <label>Send test to</label>
+        <input type="email" name="test_to" required placeholder="your-personal@gmail.com" value="{{ user.email }}">
+      </div>
+      <div>
+        <button class="btn" type="submit">Send test</button>
+      </div>
+    </div>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,55 @@
+# SpeedyFiles — docker-compose
+#
+# Default: app only. Bring your own SMTP relay (Postmark, SES, Gmail, etc.)
+# Configure in the UI under Settings → Mail after first launch.
+#
+# Quickstart:
+#   echo "SESSION_SECRET=$(openssl rand -hex 32)" > .env
+#   docker compose up -d
+#   open http://localhost:5300/setup
+
+services:
+  speedyfiles:
+    image: ghcr.io/speedyfiles/speedyfiles:latest
+    # Or build from source:
+    # build: .
+    container_name: speedyfiles
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5300:5300"   # bind to loopback; expose via your reverse proxy
+    volumes:
+      - ./data:/data            # SQLite DB + logs
+      - ./files:/srv/files      # bulk file storage
+    environment:
+      SESSION_SECRET: ${SESSION_SECRET:?must be set in .env}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:5300}
+      DATABASE_URL: sqlite+aiosqlite:////data/app.db
+      LOCAL_STORAGE_ROOT: /srv/files
+      APP_NAME: ${APP_NAME:-SpeedyFiles}
+      DEBUG: ${DEBUG:-false}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5300/healthz', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# Optional: bundled reverse proxy with TLS via Caddy
+# Uncomment to use; set DOMAIN in .env first.
+#
+#   caddy:
+#     image: caddy:2-alpine
+#     container_name: speedyfiles-caddy
+#     restart: unless-stopped
+#     ports:
+#       - "80:80"
+#       - "443:443"
+#     volumes:
+#       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+#       - caddy_data:/data
+#       - caddy_config:/config
+#     depends_on:
+#       - speedyfiles
+#
+# volumes:
+#   caddy_data:
+#   caddy_config:

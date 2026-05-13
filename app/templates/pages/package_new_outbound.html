@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}Send files{% endblock %}
+{% block content %}
+<h1>Send files to a customer</h1>
+<div class="panel" style="max-width:780px">
+<form id="outbound-form" method="post" action="/dash/packages/new/outbound?_csrf={{ csrf_token(request) }}" enctype="multipart/form-data">
+  <label>Title</label>
+  <input type="text" name="title" required placeholder="e.g. Demo masters — Acme Corp">
+  <div class="row">
+    <div>
+      <label>Recipient name</label>
+      <input type="text" name="recipient_name" required>
+    </div>
+    <div>
+      <label>Recipient email</label>
+      <input type="email" name="recipient_email" required>
+    </div>
+  </div>
+  <label>Note (optional, included in email)</label>
+  <textarea name="note" rows="3"></textarea>
+  <div class="row">
+    <div>
+      <label>Expires in (days)</label>
+      <input type="number" name="ttl_days" value="{{ default_ttl_days }}" min="1" max="90" required>
+    </div>
+  </div>
+  <label>Files</label>
+  <input type="file" id="file-picker" name="files" multiple required>
+  <p class="muted" style="font-size:12px">Multi-GB files supported. Don't close this tab during transfer.</p>
+
+  <div id="upload-list" style="margin-top:12px"></div>
+  <div id="overall" style="display:none; margin-top:12px">
+    <div class="muted" style="font-size:12px">Overall: <span id="overall-text">0 / 0 bytes</span></div>
+    <div class="progress" style="height:6px"><div id="overall-bar" style="width:0%"></div></div>
+  </div>
+
+  <div style="margin-top:16px">
+    <button class="btn btn-primary" id="submit-btn" type="submit">Send</button>
+    <a class="btn" href="/dash">Cancel</a>
+    <span id="status" class="muted" style="margin-left:12px"></span>
+  </div>
+</form>
+</div>
+
+<script>
+(function() {
+  const form    = document.getElementById('outbound-form');
+  const picker  = document.getElementById('file-picker');
+  const list    = document.getElementById('upload-list');
+  const overall = document.getElementById('overall');
+  const overallBar = document.getElementById('overall-bar');
+  const overallTxt = document.getElementById('overall-text');
+  const submitBtn = document.getElementById('submit-btn');
+  const statusEl  = document.getElementById('status');
+  const csrf      = new URLSearchParams(form.action.split('?')[1]).get('_csrf');
+
+  function fmt(n) {
+    const u=['B','KB','MB','GB','TB']; let i=0;
+    while (n>=1024 && i<u.length-1) { n/=1024; i++; }
+    return (i ? n.toFixed(1) : n) + ' ' + u[i];
+  }
+
+  function fmtDuration(ms) {
+    if (ms < 1000) return ms + ' ms';
+    const s = ms / 1000;
+    if (s < 60) return s.toFixed(1) + 's';
+    const totSec = Math.round(s);
+    const m = Math.floor(totSec / 60), sec = totSec % 60;
+    if (m < 60) return m + 'm ' + sec + 's';
+    const h = Math.floor(m / 60), rm = m % 60;
+    return h + 'h ' + rm + 'm ' + sec + 's';
+  }
+
+  function uploadOne(pkgId, file, row) {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const fd = new FormData();
+      fd.append('file', file);
+      const bar    = row.querySelector('.bar > div');
+      const status = row.querySelector('.fstatus');
+      const speed  = row.querySelector('.fspeed');
+      status.textContent = 'uploading…';
+      let lastBytes = 0, lastT = performance.now();
+      xhr.upload.onprogress = (ev) => {
+        if (!ev.lengthComputable) return;
+        bar.style.width = (ev.loaded / ev.total * 100).toFixed(1) + '%';
+        const now = performance.now();
+        const dt = (now - lastT) / 1000;
+        if (dt > 0.5) {
+          const bps = (ev.loaded - lastBytes) / dt;
+          speed.textContent = fmt(bps) + '/s';
+          lastBytes = ev.loaded; lastT = now;
+        }
+        row._loaded = ev.loaded;
+        updateOverall();
+      };
+      xhr.onload = () => {
+        if (xhr.status === 200) {
+          bar.style.width = '100%';
+          row._loaded = file.size;
+          updateOverall();
+          let dur = null;
+          try { const j = JSON.parse(xhr.responseText); dur = j.duration_ms; row._duration_ms = dur; } catch(e) {}
+          status.innerHTML = '<span style="color:var(--good)">✓</span> done';
+          if (dur != null) {
+            const bps = file.size * 1000 / Math.max(dur, 1);
+            speed.textContent = 'Transferred ' + fmt(file.size) + ' in ' + fmtDuration(dur)
+                              + ' (' + fmt(bps) + '/s)';
+          }
+          resolve();
+        } else {
+          status.innerHTML = '<span class="danger">failed (' + xhr.status + ')</span>';
+          speed.textContent = '';
+          reject(new Error('HTTP ' + xhr.status));
+        }
+      };
+      xhr.onerror = () => {
+        status.innerHTML = '<span class="danger">network error</span>';
+        reject(new Error('network'));
+      };
+      xhr.open('POST', '/dash/packages/' + encodeURIComponent(pkgId)
+                       + '/upload?_csrf=' + encodeURIComponent(csrf));
+      xhr.send(fd);
+    });
+  }
+
+  let rows = [];
+  let totalBytes = 0;
+  function updateOverall() {
+    const loaded = rows.reduce((a, r) => a + (r._loaded || 0), 0);
+    const pct = totalBytes ? (loaded / totalBytes * 100) : 0;
+    overallBar.style.width = pct.toFixed(1) + '%';
+    overallTxt.textContent = fmt(loaded) + ' / ' + fmt(totalBytes)
+                           + ' (' + pct.toFixed(1) + '%)';
+  }
+
+  function renderRows(files) {
+    list.innerHTML = '';
+    rows = [];
+    totalBytes = 0;
+    for (const f of files) {
+      const row = document.createElement('div');
+      row.className = 'file-row';
+      row.innerHTML =
+        '<div style="flex:1; min-width:0">'
+        + '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(f.name) + '</div>'
+        + '<div class="muted" style="font-size:12px">' + fmt(f.size) + ' <span class="fspeed"></span></div>'
+        + '<div class="progress bar"><div style="width:0%"></div></div>'
+        + '</div>'
+        + '<span class="fstatus muted" style="min-width:80px;text-align:right">queued</span>';
+      list.appendChild(row);
+      row._loaded = 0;
+      row._file = f;
+      rows.push(row);
+      totalBytes += f.size;
+    }
+    if (rows.length) {
+      overall.style.display = 'block';
+      updateOverall();
+    }
+  }
+  function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+  picker.addEventListener('change', () => renderRows(picker.files));
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!picker.files.length) return;
+    submitBtn.disabled = true;
+    statusEl.textContent = 'creating package…';
+
+    // Phase 1 — POST metadata (no files) to create a draft pkg
+    const fd = new FormData(form);
+    fd.delete('files');  // strip; we'll send each file in its own request
+    let pkgId;
+    try {
+      const resp = await fetch(form.action, {method: 'POST', body: fd});
+      if (!resp.ok) throw new Error('create-pkg ' + resp.status);
+      const j = await resp.json();
+      pkgId = j.pkg_id;
+    } catch (err) {
+      statusEl.innerHTML = '<span class="danger">' + err.message + '</span>';
+      submitBtn.disabled = false;
+      return;
+    }
+
+    // Phase 2 — upload each file with progress
+    statusEl.textContent = 'uploading ' + rows.length + ' file' + (rows.length===1?'':'s') + '…';
+    let failed = 0;
+    for (const row of rows) {
+      try { await uploadOne(pkgId, row._file, row); }
+      catch (err) { failed++; }
+    }
+
+    if (failed) {
+      statusEl.innerHTML = '<span class="danger">' + failed + ' file(s) failed — fix and click Send again, or open the package.</span>';
+      // Provide a recovery link
+      const a = document.createElement('a');
+      a.href = '/dash/packages/' + pkgId;
+      a.className = 'btn';
+      a.style.marginLeft = '8px';
+      a.textContent = 'Open draft package';
+      statusEl.appendChild(a);
+      submitBtn.disabled = false;
+      return;
+    }
+
+    // Summary line — total bytes + total time + avg rate (server-reported durations)
+    const totalDur = rows.reduce((a, r) => a + (r._duration_ms || 0), 0);
+    if (totalDur > 0) {
+      const avgBps = totalBytes * 1000 / totalDur;
+      overallTxt.textContent = 'Transferred ' + fmt(totalBytes) + ' in '
+                             + fmtDuration(totalDur)
+                             + ' (avg ' + fmt(avgBps) + '/s)';
+    }
+
+    // Phase 3 — finalize (mint link + send email)
+    statusEl.textContent = 'sending notification…';
+    try {
+      const resp = await fetch('/dash/packages/' + encodeURIComponent(pkgId)
+                                + '/finalize?_csrf=' + encodeURIComponent(csrf),
+                                {method: 'POST'});
+      if (!resp.ok) throw new Error('finalize ' + resp.status);
+      const j = await resp.json();
+      window.location = j.redirect || ('/dash/packages/' + pkgId);
+    } catch (err) {
+      statusEl.innerHTML = '<span class="danger">finalize failed: ' + err.message + '</span>';
+      submitBtn.disabled = false;
+    }
+  });
+})();
+</script>
+{% endblock %}

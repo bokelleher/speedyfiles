@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Download — {{ pkg.title }}{% endblock %}
+{% block content %}
+<div style="max-width:780px; margin:24px auto 12px auto; text-align:center">
+  <img src="/static/logo.png" alt="techex.lab" style="max-width:200px; width:60%; height:auto"
+       onerror="this.style.display='none'">
+</div>
+<div class="panel" style="max-width:780px; margin:0 auto">
+  <h1>{{ pkg.title }}</h1>
+  <p class="muted">Shared with {{ pkg.recipient_name }} — expires {{ pkg.expires_at.strftime('%Y-%m-%d %H:%M UTC') }}</p>
+  {% if pkg.note %}<div style="white-space:pre-wrap; margin:12px 0; padding:10px; border-left:3px solid var(--accent); background:rgba(79,158,237,0.05)">{{ pkg.note }}</div>{% endif %}
+  <h2>Files ({{ files|length }})</h2>
+  {% for f in files %}
+    <div class="file-row">
+      <div style="flex:1">{{ f.original_name }}<br><span class="muted" style="font-size:12px">{{ f.size_bytes|bytes }}</span></div>
+      <a class="btn btn-primary" href="/p/{{ token }}/file/{{ f.id }}">Download</a>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

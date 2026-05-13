@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Reset password{% endblock %}
+{% block content %}
+<div style="max-width:380px; margin:60px auto 12px auto; text-align:center">
+  <img src="/static/logo.png" alt="SpeedyFiles" style="max-width:240px; width:80%; height:auto" onerror="this.style.display='none'">
+</div>
+<div class="panel" style="max-width:380px; margin:0 auto;">
+  <h1>Forgot password</h1>
+  {% if message %}<div class="alert" style="background:rgba(111,207,151,0.1); border-color:var(--good); color:var(--good)">{{ message }}</div>{% endif %}
+  {% if not submitted %}
+  <p class="muted" style="font-size:14px">Enter your email and we'll send a reset link.</p>
+  <form method="post" action="/forgot">
+    <label>Email</label>
+    <input type="email" name="email" required autofocus>
+    <div style="margin-top:16px"><button class="btn btn-primary" type="submit">Send reset link</button></div>
+  </form>
+  {% endif %}
+  <p style="margin-top:14px; font-size:13px"><a href="/login">← back to sign in</a></p>
+</div>
+{% endblock %}

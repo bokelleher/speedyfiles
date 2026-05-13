@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Link unavailable{% endblock %}
+{% block content %}
+<div style="max-width:520px; margin:60px auto 12px auto; text-align:center">
+  <img src="/static/logo.png" alt="techex.lab" style="max-width:200px; width:60%; height:auto"
+       onerror="this.style.display='none'">
+</div>
+<div class="panel" style="max-width:520px; margin:0 auto; text-align:center">
+  <h1>This link is no longer available</h1>
+  <p class="muted">
+    {% if reason == 'expired' %}It has expired.
+    {% elif reason == 'revoked' %}It was revoked by the sender.
+    {% else %}It is invalid or unknown.{% endif %}
+  </p>
+  <p class="muted">Please contact the sender for a new link.</p>
+</div>
+{% endblock %}

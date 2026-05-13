@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Set new password{% endblock %}
+{% block content %}
+<div style="max-width:380px; margin:60px auto 12px auto; text-align:center">
+  <img src="/static/logo.png" alt="SpeedyFiles" style="max-width:240px; width:80%; height:auto" onerror="this.style.display='none'">
+</div>
+<div class="panel" style="max-width:380px; margin:0 auto;">
+  {% if not valid %}
+    <h1>Reset link expired</h1>
+    <p class="muted">The reset link is invalid, used, or has expired.</p>
+    <p><a class="btn" href="/forgot">Request a new one</a></p>
+  {% else %}
+    <h1>Set a new password</h1>
+    {% if message %}<div class="alert">{{ message }}</div>{% endif %}
+    <form method="post" action="/reset/{{ raw }}" autocomplete="off">
+      <label>New password</label>
+      <input type="password" name="new_password" required minlength="10" autocomplete="new-password">
+      <p class="muted" style="font-size:12px; margin:4px 0 0 0">At least 10 characters.</p>
+      <label>Confirm new password</label>
+      <input type="password" name="confirm_password" required minlength="10" autocomplete="new-password">
+      <div style="margin-top:16px"><button class="btn btn-primary" type="submit">Set password</button></div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

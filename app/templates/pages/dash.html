@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Packages{% endblock %}
+{% block content %}
+<h1>Packages</h1>
+<p class="muted">
+  <a class="btn btn-primary" href="/dash/packages/new/outbound">+ Send files</a>
+  <a class="btn" href="/dash/packages/new/inbound">+ Request upload</a>
+</p>
+{% if packages %}
+<div class="panel" style="padding:0">
+<table>
+  <thead><tr>
+    <th>Title</th><th>Direction</th><th>Recipient</th>
+    <th>Status</th><th>Expires</th><th>Created</th>{% if user.role=='admin' %}<th>Owner</th>{% endif %}<th></th>
+  </tr></thead>
+  <tbody>
+  {% for p in packages %}
+    <tr>
+      <td><a href="/dash/packages/{{ p.id }}">{{ p.title }}</a><br>
+          <span class="muted mono" style="font-size:11px">{{ p.id }}</span></td>
+      <td>{{ p.direction }}</td>
+      <td>{{ p.recipient_name }}<br><span class="muted">{{ p.recipient_email }}</span></td>
+      <td>
+        {% if p.status == 'active' and p.expires_at > now %}
+          <span class="pill pill-active">active</span>
+        {% elif p.status == 'revoked' %}
+          <span class="pill pill-revoked">revoked</span>
+        {% elif p.status == 'draft' %}
+          <span class="pill">draft</span>
+        {% else %}
+          <span class="pill pill-expired">{{ 'expired' if p.expires_at <= now else p.status }}</span>
+        {% endif %}
+      </td>
+      <td>{{ p.expires_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td>{{ p.created_at.strftime('%Y-%m-%d') }}</td>
+      {% if user.role == 'admin' %}<td>user #{{ p.owner_user_id }}</td>{% endif %}
+      <td style="text-align:right; white-space:nowrap">
+        <form method="post" action="/dash/packages/{{ p.id }}/delete?_csrf={{ csrf_token(request) }}" class="inline"
+              data-title={{ p.title|tojson }}
+              onsubmit="return confirm('Delete package: ' + this.dataset.title + '?\n\nThis permanently removes the files and DB rows. Audit-log entries are preserved (unlinked). Cannot be undone.');">
+          <button class="btn btn-danger" type="submit" style="padding:4px 10px">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="panel"><p class="muted">No packages yet.</p></div>
+{% endif %}
+{% endblock %}

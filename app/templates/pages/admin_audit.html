@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<h1>Audit log</h1>
+<p class="muted">{{ total }} total events. Showing {{ rows|length }} starting at offset {{ offset }}.</p>
+
+<form method="get" action="/admin/audit" style="margin-bottom:16px; display:flex; gap:10px; align-items:end">
+  <div style="flex:1; max-width:240px">
+    <label>Filter by action</label>
+    <select name="action" onchange="this.form.submit()">
+      <option value="">— all actions —</option>
+      {% for a in actions %}
+        <option value="{{ a }}" {% if a == current_action %}selected{% endif %}>{{ a }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div>
+    <label>Page size</label>
+    <select name="limit" onchange="this.form.submit()">
+      {% for n in (50, 100, 200, 500) %}
+        <option value="{{ n }}" {% if n == limit %}selected{% endif %}>{{ n }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  {% if current_action %}<a class="btn" href="/admin/audit">Clear filter</a>{% endif %}
+</form>
+
+<div class="panel" style="padding:0; overflow-x:auto">
+<table style="min-width:900px">
+  <thead><tr>
+    <th>When (UTC)</th><th>Action</th><th>User</th><th>Package</th>
+    <th>IP</th><th>Details</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td class="mono" style="font-size:12px; white-space:nowrap">{{ r.ts.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+      <td><code style="font-size:12px">{{ r.action }}</code></td>
+      <td>{% if r.user_id %}user #{{ r.user_id }}{% else %}<span class="muted">magic link</span>{% endif %}</td>
+      <td>{% if r.package_id %}<a href="/dash/packages/{{ r.package_id }}" class="mono" style="font-size:11px">{{ r.package_id[:14] }}…</a>
+          {% else %}<span class="muted">—</span>{% endif %}</td>
+      <td class="mono" style="font-size:12px">{{ r.ip or '—' }}</td>
+      <td class="mono" style="font-size:11px; max-width:400px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap"
+          title="{{ r.details_json or '' }}">{{ (r.details_json or '')[:80] }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div style="margin-top:14px; display:flex; gap:8px">
+  {% if offset > 0 %}
+  <a class="btn" href="/admin/audit?limit={{ limit }}&offset={{ [offset - limit, 0]|max }}{% if current_action %}&action={{ current_action }}{% endif %}">← Newer</a>
+  {% endif %}
+  {% if offset + limit < total %}
+  <a class="btn" href="/admin/audit?limit={{ limit }}&offset={{ offset + limit }}{% if current_action %}&action={{ current_action }}{% endif %}">Older →</a>
+  {% endif %}
+</div>
+{% endblock %}

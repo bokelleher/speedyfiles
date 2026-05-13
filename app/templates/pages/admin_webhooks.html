@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Webhooks{% endblock %}
+{% block content %}
+<p class="muted"><a href="/admin/settings">← all settings</a></p>
+<h1>Webhooks</h1>
+<p class="muted">Subscribe to package events. SpeedyFiles will POST a JSON payload to your URL,
+  signed with HMAC-SHA256 in the <code>X-SpeedyFiles-Signature</code> header.</p>
+
+{% if new_secret %}
+<div class="panel" style="border-color:var(--accent); background:rgba(94,198,255,0.05)">
+  <h2 style="margin-top:0">Signing secret</h2>
+  <p class="muted">Copy this <b>now</b>. Use it to verify incoming webhooks (HMAC-SHA256 of the raw body).</p>
+  <pre style="background:var(--bg); padding:14px; border-radius:6px; word-break:break-all">{{ new_secret }}</pre>
+</div>
+{% endif %}
+
+<h2>Active subscriptions</h2>
+{% if hooks %}
+<div class="panel" style="padding:0">
+<table>
+  <thead><tr><th>URL</th><th>Events</th><th>Status</th><th>Last fire</th><th>Last code</th><th>Failures</th><th></th></tr></thead>
+  <tbody>
+  {% for h in hooks %}
+    <tr>
+      <td style="max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="{{ h.url }}">
+        {{ h.url }}{% if h.description %}<br><span class="muted" style="font-size:11px">{{ h.description }}</span>{% endif %}
+      </td>
+      <td><span class="muted" style="font-size:11px">{{ h.events.split(',')|join(', ') }}</span></td>
+      <td>{% if h.is_active %}<span class="pill pill-active">active</span>{% else %}<span class="pill pill-revoked">disabled</span>{% endif %}</td>
+      <td>{{ h.last_fired_at.strftime('%Y-%m-%d %H:%M') if h.last_fired_at else '—' }}</td>
+      <td>{{ h.last_status if h.last_status else '—' }}</td>
+      <td>{{ h.failure_count }}</td>
+      <td style="white-space:nowrap">
+        <form method="post" action="/admin/webhooks/{{ h.id }}/test?_csrf={{ csrf_token(request) }}" class="inline">
+          <button class="btn" type="submit" style="padding:4px 10px">Test</button>
+        </form>
+        <form method="post" action="/admin/webhooks/{{ h.id }}/toggle?_csrf={{ csrf_token(request) }}" class="inline">
+          <button class="btn" type="submit" style="padding:4px 10px">{% if h.is_active %}Disable{% else %}Enable{% endif %}</button>
+        </form>
+        <form method="post" action="/admin/webhooks/{{ h.id }}/delete?_csrf={{ csrf_token(request) }}" class="inline"
+              onsubmit="return confirm('Delete webhook?');">
+          <button class="btn btn-danger" type="submit" style="padding:4px 10px">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% else %}
+<div class="panel"><p class="muted">No webhooks yet.</p></div>
+{% endif %}
+
+<h2>Subscribe to events</h2>
+<div class="panel" style="max-width:680px">
+<form method="post" action="/admin/webhooks?_csrf={{ csrf_token(request) }}">
+  <label>URL</label>
+  <input type="url" name="url" required placeholder="https://your-app.example.com/webhooks/speedyfiles">
+  <label>Description (optional)</label>
+  <input type="text" name="description" maxlength="512" placeholder="e.g. Slack notification bot">
+  <label>Events</label>
+  <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top:8px">
+    {% for e in events_all %}
+    <label style="display:flex; align-items:center; gap:8px; font-size:13px; text-transform:none; letter-spacing:0; color:var(--fg); margin:0">
+      <input type="checkbox" name="events_cb" value="{{ e }}" checked
+             onchange="updateCsv()">
+      <code style="font-size:12px">{{ e }}</code>
+    </label>
+    {% endfor %}
+  </div>
+  <input type="hidden" name="events_csv" id="events_csv" value="{{ events_all|join(',') }}">
+  <script>
+    function updateCsv() {
+      const checked = Array.from(document.querySelectorAll('input[name=events_cb]:checked'))
+        .map(i => i.value);
+      document.getElementById('events_csv').value = checked.join(',');
+    }
+  </script>
+  <div style="margin-top:16px"><button class="btn btn-primary" type="submit">Create webhook</button></div>
+</form>
+</div>
+
+<h2>Payload format</h2>
+<p class="muted">All events POST a JSON body like:</p>
+<pre style="background:var(--bg); padding:14px; border-radius:6px; font-size:12px">{
+  "event": "package.finalized",
+  "timestamp": "2026-05-13T20:30:22Z",
+  "package_id": "abc123...",
+  "title": "Demo masters — Acme",
+  "recipient_email": "cust@acme.com",
+  "owner_user_id": 1,
+  "file_count": 3
+}</pre>
+<p class="muted">Signature header (HMAC-SHA256 of raw body using the per-hook secret):</p>
+<pre style="background:var(--bg); padding:14px; border-radius:6px; font-size:12px">X-SpeedyFiles-Event: package.finalized
+X-SpeedyFiles-Signature: sha256=&lt;hex digest&gt;
+X-SpeedyFiles-Hook-Id: 42</pre>
+<p class="muted" style="font-size:13px">After 10 consecutive failures the hook auto-disables. Click Enable to re-arm after fixing.</p>
+{% endblock %}

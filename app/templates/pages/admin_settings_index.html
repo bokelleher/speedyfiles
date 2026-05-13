@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<div class="panel" style="padding:0">
+  <a href="/admin/settings/mail"
+     style="display:flex; padding:14px 16px; text-decoration:none; color:inherit; border-bottom:1px solid var(--border)">
+    <div style="flex:1">
+      <div><b>Mail server</b></div>
+      <div class="muted" style="font-size:12px">SMTP host/port/auth, from-address, HELO, test send.</div>
+    </div>
+    <div class="muted">›</div>
+  </a>
+  <a href="/admin/webhooks"
+     style="display:flex; padding:14px 16px; text-decoration:none; color:inherit; border-bottom:1px solid var(--border)">
+    <div style="flex:1">
+      <div><b>Webhooks</b></div>
+      <div class="muted" style="font-size:12px">HMAC-signed HTTP POSTs on package events. Slack / Discord / your bot.</div>
+    </div>
+    <div class="muted">›</div>
+  </a>
+  <a href="/admin/audit"
+     style="display:flex; padding:14px 16px; text-decoration:none; color:inherit">
+    <div style="flex:1">
+      <div><b>Audit log</b></div>
+      <div class="muted" style="font-size:12px">Every login, magic-link hit, file action, admin operation.</div>
+    </div>
+    <div class="muted">›</div>
+  </a>
+</div>
+<p class="muted" style="font-size:12px">More settings pages (site identity, storage, security) will appear here as we add them.</p>
+{% endblock %}

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ pkg.title }}{% endblock %}
+{% block content %}
+<p class="muted"><a href="/dash">← all packages</a></p>
+<h1>{{ pkg.title }}
+  {% if pkg.status == 'active' and pkg.expires_at > now %}<span class="pill pill-active">active</span>
+  {% elif pkg.status == 'revoked' %}<span class="pill pill-revoked">revoked</span>
+  {% else %}<span class="pill pill-expired">{{ 'expired' if pkg.expires_at <= now else pkg.status }}</span>{% endif %}
+</h1>
+<div class="panel">
+  <div><b>Direction:</b> {{ pkg.direction }}</div>
+  <div><b>Recipient:</b> {{ pkg.recipient_name }} &lt;{{ pkg.recipient_email }}&gt;</div>
+  <div><b>Storage:</b> {{ pkg.storage_backend }} ({{ pkg.transport_mode }})</div>
+  <div><b>Expires:</b> {{ pkg.expires_at.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+  <div><b>Created:</b> {{ pkg.created_at.strftime('%Y-%m-%d %H:%M UTC') }}</div>
+  {% if pkg.note %}<div><b>Note:</b> {{ pkg.note }}</div>{% endif %}
+</div>
+
+<h2>Magic link</h2>
+<div class="panel">
+{% for t in tokens %}
+  <div class="mono" style="word-break:break-all">
+    {{ base_url }}/p/<i class="muted">(hashed in DB)</i>
+    {% if t.revoked_at %}<span class="pill pill-revoked">revoked</span>{% endif %}
+  </div>
+  <div class="muted" style="font-size:12px">
+    purpose={{ t.purpose }} • uses={{ t.use_count }} • expires={{ t.expires_at.strftime('%Y-%m-%d %H:%M') }}
+  </div>
+{% endfor %}
+<p class="muted" style="font-size:12px">Raw tokens are not stored — they only appear in the customer's email at creation time.</p>
+</div>
+
+<h2>Files</h2>
+<div class="panel" style="padding:0">
+{% if files %}
+<table>
+  <thead><tr><th>Name</th><th>Size</th><th>Transfer</th><th>State</th><th>Uploaded</th></tr></thead>
+  <tbody>
+  {% for f in files %}
+    <tr>
+      <td>{{ f.original_name }}<br><span class="muted mono" style="font-size:11px">{{ f.sha256[:16] if f.sha256 else '' }}</span></td>
+      <td>{{ f.size_bytes|bytes }}</td>
+      <td>
+        {% if f.duration_ms %}
+          {{ f|transfer_stats }}
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
+      <td>{{ f.state }}</td>
+      <td>{{ f.uploaded_at.strftime('%Y-%m-%d %H:%M') if f.uploaded_at else '—' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% set total_size = files|sum(attribute='size_bytes') %}
+{% set total_ms = files|sum(attribute='duration_ms') %}
+{% if total_ms %}
+<div class="muted" style="padding:10px 12px; border-top:1px solid var(--border); font-size:12px">
+  Total: <b>{{ total_size|bytes }}</b> across <b>{{ files|length }}</b> file(s) in <b>{{ total_ms|duration_ms }}</b>
+  {% if total_size and total_ms %}
+    (avg <b>{{ ((total_size * 1000) // total_ms)|bytes }}/s</b>)
+  {% endif %}
+</div>
+{% endif %}
+{% else %}<p class="muted" style="padding:12px">No files yet (waiting for upload).</p>{% endif %}
+</div>
+
+<div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap">
+{% if pkg.status == 'active' %}
+<form method="post" action="/dash/packages/{{ pkg.id }}/revoke?_csrf={{ csrf_token(request) }}" class="inline"
+      onsubmit="return confirm('Revoke this package?\n\nThe customer\'s magic link will stop working immediately. Files stay on disk and can be undeleted via re-creating the package.');">
+  <button class="btn btn-danger" type="submit">Revoke link</button>
+</form>
+{% endif %}
+<form method="post" action="/dash/packages/{{ pkg.id }}/delete?_csrf={{ csrf_token(request) }}" class="inline"
+      data-title={{ pkg.title|tojson }}
+      data-summary="{{ files|length }} file(s) totaling {{ (files|sum(attribute='size_bytes'))|bytes }}"
+      onsubmit="return confirm('PERMANENTLY DELETE this package?\n\nTitle: ' + this.dataset.title + '\n' + this.dataset.summary + '\n\nThis removes the files from disk and the package from the database. Audit-log entries are preserved but unlinked. This cannot be undone.');">
+  <button class="btn btn-danger" type="submit"
+          style="background:rgba(224,123,123,0.1); border-color:var(--danger)">Delete package</button>
+</form>
+</div>
+
+<h2>Audit log (recent)</h2>
+<div class="panel" style="padding:0">
+<table>
+  <thead><tr><th>When</th><th>Action</th><th>Who</th><th>IP</th><th>Detail</th></tr></thead>
+  <tbody>
+  {% for l in logs %}
+    <tr>
+      <td class="mono" style="font-size:12px">{{ l.ts.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+      <td>{{ l.action }}</td>
+      <td>{% if l.user_id %}user #{{ l.user_id }}{% else %}<i class="muted">magic link</i>{% endif %}</td>
+      <td class="mono">{{ l.ip or '—' }}</td>
+      <td class="mono" style="font-size:12px">{{ l.details_json or '' }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

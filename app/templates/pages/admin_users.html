@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<h1>Users</h1>
+
+<div class="panel" style="padding:0">
+<table>
+  <thead><tr>
+    <th>Email</th><th>Name</th><th>Role</th><th>Active</th><th>Created</th>
+    <th>Last login</th><th></th>
+  </tr></thead>
+  <tbody>
+  {% for u in users %}
+    <tr>
+      <td>{{ u.email }}</td><td>{{ u.display_name }}</td><td>{{ u.role }}</td>
+      <td>{{ 'yes' if u.is_active else 'no' }}</td>
+      <td>{{ u.created_at.strftime('%Y-%m-%d') }}</td>
+      <td>{{ u.last_login_at.strftime('%Y-%m-%d %H:%M') if u.last_login_at else '—' }}</td>
+      <td style="white-space:nowrap">
+        <button type="button" class="btn" style="padding:4px 10px"
+                onclick="this.nextElementSibling.style.display='inline-flex'; this.style.display='none'">Reset password</button>
+        <form method="post" action="/admin/users/{{ u.id }}/reset?_csrf={{ csrf_token(request) }}" class="inline"
+              style="display:none; gap:4px; align-items:center">
+          <input type="password" name="password" required minlength="10" placeholder="new password (min 10)"
+                 style="padding:4px 8px; width:200px" autocomplete="new-password">
+          <button class="btn btn-primary" type="submit" style="padding:4px 10px">Set</button>
+        </form>
+        {% if u.is_active and u.id != user.id %}
+        <form method="post" action="/admin/users/{{ u.id }}/disable?_csrf={{ csrf_token(request) }}" class="inline"
+              onsubmit="return confirm('Disable user {{ u.email }}?');">
+          <button class="btn btn-danger" type="submit" style="padding:4px 10px">Disable</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<h2>Create user</h2>
+<div class="panel" style="max-width:680px">
+<form method="post" action="/admin/users?_csrf={{ csrf_token(request) }}">
+  <div class="row">
+    <div><label>Email</label><input type="email" name="email" required></div>
+    <div><label>Display name</label><input type="text" name="display_name" required></div>
+  </div>
+  <div class="row">
+    <div><label>Password</label><input type="password" name="password" required minlength="10"></div>
+    <div><label>Role</label>
+      <select name="role">
+        <option value="regular">regular</option>
+        <option value="admin">admin</option>
+      </select>
+    </div>
+  </div>
+  <div style="margin-top:16px"><button class="btn btn-primary" type="submit">Create</button></div>
+</form>
+</div>
+{% endblock %}
