@@ -14,8 +14,8 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings as env_settings
 from app import settings_store
+from app.config import settings as env_settings
 
 log = logging.getLogger(__name__)
 

@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     BigInteger,
@@ -17,7 +17,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 def utcnow() -> datetime:
     """Naive UTC; SQLite TEXT stores it as ISO without tz."""
-    return datetime.now(tz=timezone.utc).replace(tzinfo=None)
+    return datetime.now(tz=UTC).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
@@ -36,7 +36,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    packages: Mapped[list["Package"]] = relationship(back_populates="owner")
+    packages: Mapped[list[Package]] = relationship(back_populates="owner")
 
 
 class Package(Base):
@@ -56,8 +56,8 @@ class Package(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     owner: Mapped[User] = relationship(back_populates="packages")
-    files: Mapped[list["PackageFile"]] = relationship(back_populates="package", cascade="all, delete-orphan")
-    tokens: Mapped[list["MagicLinkToken"]] = relationship(back_populates="package", cascade="all, delete-orphan")
+    files: Mapped[list[PackageFile]] = relationship(back_populates="package", cascade="all, delete-orphan")
+    tokens: Mapped[list[MagicLinkToken]] = relationship(back_populates="package", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_packages_status_expires", "status", "expires_at"),

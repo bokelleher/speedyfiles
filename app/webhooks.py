@@ -8,11 +8,10 @@ after N consecutive failures so a broken endpoint can't slow every event.
 """
 from __future__ import annotations
 
-import hmac
 import hashlib
+import hmac
 import json
 import logging
-from datetime import datetime
 from typing import Any
 
 import httpx

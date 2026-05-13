@@ -12,7 +12,7 @@ import sys
 from sqlalchemy import select
 
 from app.auth import hash_password
-from app.db import AsyncSessionLocal, init_pragmas, engine
+from app.db import AsyncSessionLocal, engine, init_pragmas
 from app.models import Base, User
 from app.utils import utcnow
 

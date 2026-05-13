@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 _BAD = re.compile(r"[^A-Za-z0-9._-]")
 
@@ -33,7 +33,7 @@ def sanitize_filename(name: str) -> str:
 
 def utcnow() -> datetime:
     """Naive UTC datetime — naive everywhere keeps SQLite comparisons consistent."""
-    return datetime.now(tz=timezone.utc).replace(tzinfo=None)
+    return datetime.now(tz=UTC).replace(tzinfo=None)
 
 
 def fmt_bytes(n: int | None) -> str:

@@ -1,10 +1,10 @@
 """Pytest fixtures for SpeedyFiles."""
 from __future__ import annotations
 
-import os
-import tempfile
 import hashlib
+import os
 import secrets
+import tempfile
 from collections.abc import AsyncIterator
 
 # Set required env vars BEFORE importing the app
@@ -34,7 +34,7 @@ def tmp_storage_root(tmp_path_factory) -> str:
 async def _schema_init(tmp_storage_root):
     """Session-scoped: create the schema once. Avoids stale-pool issues that
     would otherwise arise from dropping/recreating tables every test."""
-    from app.db import init_pragmas, engine
+    from app.db import engine, init_pragmas
     from app.models import Base
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -53,9 +53,18 @@ async def app(_schema_init, capsys):
     additional users as needed.
     """
     from app.auth import hash_password
-    from app.db import engine, AsyncSessionLocal
-    from app.models import AccessLog, MagicLinkToken, PackageFile, Package, \
-        ApiToken, AppSetting, Webhook, PasswordResetToken, User
+    from app.db import AsyncSessionLocal, engine
+    from app.models import (
+        AccessLog,
+        ApiToken,
+        AppSetting,
+        MagicLinkToken,
+        Package,
+        PackageFile,
+        PasswordResetToken,
+        User,
+        Webhook,
+    )
     async with engine.begin() as conn:
         for tbl in (AccessLog, MagicLinkToken, PackageFile, Package,
                     ApiToken, AppSetting, Webhook, PasswordResetToken, User):

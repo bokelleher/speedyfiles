@@ -13,7 +13,6 @@ from app.auth import require_admin
 from app.db import get_db
 from app.models import Webhook
 from app.templating import templates
-from app.utils import utcnow
 from app.webhooks import EVENTS
 
 log = logging.getLogger(__name__)

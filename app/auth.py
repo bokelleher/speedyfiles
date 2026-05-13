@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import json
 import secrets
-from typing import Optional
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import Cookie, Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 from itsdangerous import BadSignature, TimestampSigner
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,7 +50,7 @@ def read_session_cookie(value: str) -> dict | None:
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
-) -> Optional[User]:
+) -> User | None:
     """Returns the User or None. Use require_user for endpoints needing auth."""
     cookie = request.cookies.get(settings.session_cookie_name)
     if not cookie:
@@ -69,7 +68,7 @@ async def get_current_user(
     return user
 
 
-async def require_user(user: Optional[User] = Depends(get_current_user)) -> User:
+async def require_user(user: User | None = Depends(get_current_user)) -> User:
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="login required")
     return user

@@ -1,8 +1,8 @@
 """Database engine + session helpers."""
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -41,6 +41,7 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 async def init_pragmas() -> None:
     """Set SQLite WAL + foreign-key enforcement, run lightweight migrations."""
     from sqlalchemy import text
+
     from app.models import Base
     async with engine.begin() as conn:
         await conn.execute(text("PRAGMA journal_mode=WAL"))

@@ -12,8 +12,8 @@ from app.utils import utcnow
 @pytest.fixture
 async def outbound_pkg_with_token(db_session, admin_user, tmp_storage_root):
     """An active outbound package with a known-plaintext magic token."""
-    from app.storage import get_backend
     from app.models import PackageFile
+    from app.storage import get_backend
     user, _ = admin_user
     pkg_id = "test_pkg_" + secrets.token_urlsafe(6)
     pkg = Package(

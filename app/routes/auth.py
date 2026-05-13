@@ -129,8 +129,8 @@ async def change_password(
 import hashlib as _hashlib
 import secrets as _secrets
 from datetime import timedelta
+
 from app.models import ApiToken
-from app.utils import utcnow
 
 
 @router.get("/account/tokens", response_class=HTMLResponse)
@@ -196,9 +196,9 @@ async def revoke_token(
 
 # --- Password reset (forgot-password flow) ---
 
-from app.models import PasswordResetToken
-from app.email import send_email
 from app.config import settings as app_settings
+from app.email import send_email
+from app.models import PasswordResetToken
 
 
 @router.get("/forgot", response_class=HTMLResponse)

@@ -1,5 +1,4 @@
 """Login, sessions, password change."""
-import re
 
 
 async def test_login_redirects_when_unauth(client):

@@ -19,9 +19,18 @@ import time
 from datetime import datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import (APIRouter, Body, Depends, FastAPI, File, Header, HTTPException,
-                     Path, Query, Request, UploadFile, status)
-from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi import (
+    APIRouter,
+    Depends,
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    UploadFile,
+)
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -214,7 +223,7 @@ async def revoke_token(
     if row.revoked_at is None:
         row.revoked_at = utcnow()
         await db.commit()
-    return None
+    return
 
 
 # ============================================================
@@ -519,7 +528,7 @@ async def delete_package(
         })
     except Exception:
         log.exception("webhook fire failed: api package.deleted")
-    return None
+    return
 
 
 # ============================================================

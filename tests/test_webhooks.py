@@ -1,9 +1,6 @@
 """Webhook signing + dispatch (without making real HTTP calls)."""
 import hashlib
 import hmac
-import json
-
-import pytest
 
 from app.models import Webhook
 from app.webhooks import EVENTS, _sign

@@ -10,7 +10,6 @@ from app.auth import hash_password, require_admin
 from app.db import get_db
 from app.models import AccessLog, User
 from app.templating import templates
-from app.utils import utcnow
 
 router = APIRouter()
 

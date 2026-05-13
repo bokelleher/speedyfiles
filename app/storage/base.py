@@ -5,9 +5,10 @@ can become 'udp_sidecar' without touching the routes layer.
 """
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import AsyncIterator, Literal, Protocol
+from typing import Literal, Protocol
 
 
 @dataclass

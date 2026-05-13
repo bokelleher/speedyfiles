@@ -8,7 +8,7 @@ import json
 import logging
 import urllib.parse
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,15 +99,14 @@ async def public_landing(raw: str, request: Request, db: AsyncSession = Depends(
             request, "pages/public_download.html",
             {"pkg": pkg, "files": files, "token": raw},
         )
-    else:
-        files = (await db.scalars(
-            select(PackageFile).where(PackageFile.package_id == pkg.id)
-            .order_by(PackageFile.created_at)
-        )).all()
-        return templates.TemplateResponse(
-            request, "pages/public_upload.html",
-            {"pkg": pkg, "files": files, "token": raw},
-        )
+    files = (await db.scalars(
+        select(PackageFile).where(PackageFile.package_id == pkg.id)
+        .order_by(PackageFile.created_at)
+    )).all()
+    return templates.TemplateResponse(
+        request, "pages/public_upload.html",
+        {"pkg": pkg, "files": files, "token": raw},
+    )
 
 
 @router.get("/p/{raw}/file/{file_id}")
