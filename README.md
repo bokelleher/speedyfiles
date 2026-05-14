@@ -169,11 +169,26 @@ mypy app/
 ## Roadmap
 
 - [ ] OIDC / SSO support (Authelia / Authentik / Keycloak / Google Workspace)
-- [ ] UDP-accelerated transfers (Aspera/Tsunami-style sidecar for LAN-to-WAN throughput)
 - [ ] tus.io resumable upload protocol
 - [ ] Per-package storage backend (mix local + S3 in the same instance)
 - [ ] Browser-direct presigned S3 uploads (skip the app server)
 - [ ] Migration tooling: import from Pingvin Share / WeTransfer
+
+## SpeedyFiles Cloud
+
+For teams that want **UDP-accelerated global transfers**, a **signed CLI** that
+works on customer machines without IT help, **multi-region edge nodes**,
+**managed email reputation**, and zero-ops operation — we're building
+**SpeedyFiles Cloud**, a hosted SaaS layered on top of this same open-source
+core.
+
+The OSS will always include everything you need to run SpeedyFiles yourself.
+Cloud adds the operationally-expensive bits (UDP edge network, signed clients,
+abuse mitigation, deliverability-as-a-service) for teams that would rather
+pay than build.
+
+👉 [**Join the Cloud waitlist**](https://speedyfiles.app/cloud/) — early
+access + a generous free tier for OSS contributors.
 
 ## Contributing
 
