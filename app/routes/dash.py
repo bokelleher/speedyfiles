@@ -248,7 +248,12 @@ async def package_finalize(
     user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Owner-only: mint magic link + send email for a draft outbound pkg."""
+    """Owner-only: mint magic link + send email for a draft outbound pkg.
+
+    Content-negotiates the response:
+      - Browser form post (Accept: text/html) → 303 to the package detail page.
+      - Fetch from JS (Accept: application/json) → JSON {"ok": true, "redirect": "..."}.
+    """
     pkg = await db.get(Package, pkg_id)
     if not pkg:
         raise HTTPException(status_code=404)
@@ -256,9 +261,16 @@ async def package_finalize(
         raise HTTPException(status_code=403)
     if pkg.direction != "outbound":
         raise HTTPException(status_code=400, detail="not outbound")
+
+    accept = (request.headers.get("accept") or "").lower()
+    wants_html = "text/html" in accept and "application/json" not in accept
+
     if pkg.status == "active":
+        if wants_html:
+            return RedirectResponse(f"/dash/packages/{pkg_id}", status_code=303)
         return {"ok": True, "already_active": True,
                 "redirect": f"/dash/packages/{pkg_id}"}
+
     file_count = await db.scalar(
         select(func.count()).select_from(PackageFile)
         .where(PackageFile.package_id == pkg_id, PackageFile.state == "complete")
@@ -266,6 +278,8 @@ async def package_finalize(
     if not file_count:
         raise HTTPException(status_code=400, detail="no files uploaded yet")
     await _finalize_outbound(db, pkg, user, request)
+    if wants_html:
+        return RedirectResponse(f"/dash/packages/{pkg_id}", status_code=303)
     return {"ok": True, "redirect": f"/dash/packages/{pkg_id}"}
 
 
