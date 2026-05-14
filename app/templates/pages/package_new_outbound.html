@@ -445,7 +445,7 @@
     }
 
     // Phase 2 — sequential per-file upload with pause/cancel support
-    const results = { ok: 0, failed: [], cancelled: [], skipped: [] };
+    const results = { succeeded: [], failed: [], cancelled: [], skipped: [] };
     for (const row of rows) {
       // Honor "cancel remaining" — mark all remaining queued rows skipped
       if (queue.aborted) {
@@ -453,7 +453,8 @@
           row._state = 'skipped';
           row.querySelector('.fstatus').innerHTML = '<span class="danger">cancelled</span>';
           row._cancelBtn.style.display = 'none';
-          results.skipped.push({ index: row._index + 1, name: row._file.name });
+          results.skipped.push({ index: row._index + 1, name: row._file.name,
+                                  size: row._file.size });
         }
         continue;
       }
@@ -465,57 +466,84 @@
       if (queue.aborted) { continue; }
       // Row may have been individually skipped while queued
       if (row._state === 'skipped') {
-        results.skipped.push({ index: row._index + 1, name: row._file.name });
+        results.skipped.push({ index: row._index + 1, name: row._file.name,
+                                size: row._file.size });
         continue;
       }
       statusEl.textContent = `uploading file ${row._index + 1} of ${rows.length} (${row._file.name})…`;
       try {
         await uploadOne(pkgId, row);
-        results.ok++;
+        results.succeeded.push({ index: row._index + 1, name: row._file.name,
+                                  size: row._file.size,
+                                  duration_ms: row._duration_ms || null });
       } catch (err) {
         if (row._state === 'cancelled') {
-          results.cancelled.push({ index: row._index + 1, name: row._file.name });
+          results.cancelled.push({ index: row._index + 1, name: row._file.name,
+                                    size: row._file.size });
         } else {
-          results.failed.push({ index: row._index + 1, name: row._file.name, message: err.message });
+          results.failed.push({ index: row._index + 1, name: row._file.name,
+                                 size: row._file.size, message: err.message });
         }
         log('upload error:', err);
       }
     }
 
     queueControls.style.display = 'none';
-    const errors = results.failed;
 
-    // If anything failed/cancelled/skipped, show a recap. ALSO still
-    // finalize automatically if at least one file actually succeeded —
-    // the package isn't useful without files, but a partial send is.
+    // Render a full recap — both what made it and what didn't — whenever
+    // ANY file didn't transfer cleanly. If everything succeeded, fall
+    // through to the automatic finalize below.
     const incidents = [
-      ...results.failed.map(e => ({ ...e, kind: 'failed' })),
-      ...results.cancelled.map(e => ({ ...e, kind: 'cancelled' })),
-      ...results.skipped.map(e => ({ ...e, kind: 'skipped' })),
+      ...results.failed,
+      ...results.cancelled,
+      ...results.skipped,
     ];
     if (incidents.length) {
-      const lines = incidents.map(e => {
-        const tail = e.message ? `: ${escapeHtml(e.message)}` : '';
-        return `  • file ${e.index} (${escapeHtml(e.name)}) — ${e.kind}${tail}`;
-      }).join('<br>');
-      // If NOTHING succeeded, abort early — there's nothing to send.
-      if (results.ok === 0) {
-        statusEl.innerHTML =
-          `<span class="danger">No files uploaded successfully.</span><br>` +
-          `<span class="muted" style="font-size:12px">${lines}</span><br>` +
-          `<a href="/dash/packages/${pkgId}" class="btn" style="margin-top:8px">Open draft package</a>`;
-        submitBtn.disabled = false;
-        return;
-      }
-      // Otherwise let the user decide: finalize anyway, or open the draft.
+      const okCount    = results.succeeded.length;
+      const incCount   = incidents.length;
+
+      const renderList = (title, items, dotColor, withMsg) => {
+        if (!items.length) return '';
+        const lines = items.map(e => {
+          const sz   = e.size != null ? ` <span class="muted">(${fmt(e.size)})</span>` : '';
+          const tail = withMsg && e.message ? ` <span class="muted">— ${escapeHtml(e.message)}</span>` : '';
+          return `<div style="padding:2px 0">
+                    <span style="color:${dotColor}">●</span>
+                    file ${e.index}: ${escapeHtml(e.name)}${sz}${tail}
+                  </div>`;
+        }).join('');
+        return `<div style="margin-top:10px">
+                  <div style="font-size:12px; color:var(--muted); text-transform:uppercase;
+                              letter-spacing:0.05em; font-weight:600; margin-bottom:4px">
+                    ${title}
+                  </div>
+                  ${lines}
+                </div>`;
+      };
+
+      const okBlock        = renderList(`✓ Uploaded (${okCount})`,        results.succeeded, 'var(--good)',   false);
+      const cancelledBlock = renderList(`✕ Cancelled (${results.cancelled.length})`, results.cancelled, 'var(--danger)', false);
+      const skippedBlock   = renderList(`↷ Skipped (${results.skipped.length})`,    results.skipped,   'var(--muted)',  false);
+      const failedBlock    = renderList(`⚠ Failed (${results.failed.length})`,     results.failed,    'var(--danger)', true);
+
+      const headline = okCount === 0
+        ? `<span class="danger">No files uploaded successfully.</span>`
+        : `<span><b>${okCount}</b> of ${rows.length} file(s) uploaded · <span class="danger">${incCount}</span> didn't transfer.</span>`;
+
+      const finalizeBtn = okCount > 0
+        ? `<button type="button" id="btn-finalize-anyway" class="btn btn-primary" style="margin-top:12px">Send the ${okCount} that succeeded</button> `
+        : '';
+
       statusEl.innerHTML =
-        `<span class="danger">${incidents.length} of ${rows.length} file(s) didn't transfer.</span> ` +
-        `<span>${results.ok} succeeded.</span><br>` +
-        `<span class="muted" style="font-size:12px">${lines}</span><br>` +
-        `<button type="button" id="btn-finalize-anyway" class="btn btn-primary" style="margin-top:8px">Send the ${results.ok} that succeeded</button> ` +
-        `<a href="/dash/packages/${pkgId}" class="btn" style="margin-top:8px">Open draft package</a>`;
+        `<div style="font-size:14px">${headline}</div>` +
+        okBlock + cancelledBlock + skippedBlock + failedBlock +
+        `<div style="margin-top:12px">
+           ${finalizeBtn}
+           <a href="/dash/packages/${pkgId}" class="btn" style="margin-top:0">Open draft package</a>
+         </div>`;
       submitBtn.disabled = false;
-      document.getElementById('btn-finalize-anyway').addEventListener('click', () => finalize(pkgId));
+      const finBtn = document.getElementById('btn-finalize-anyway');
+      if (finBtn) finBtn.addEventListener('click', () => finalize(pkgId));
       return;
     }
 
