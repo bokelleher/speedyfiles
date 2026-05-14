@@ -24,16 +24,34 @@
       <input type="number" name="ttl_days" value="{{ default_ttl_days }}" min="1" max="90" required>
     </div>
   </div>
-  <label>Files</label>
-  <input type="file" id="file-picker" name="files" multiple required>
-  <p class="muted" style="font-size:12px">Multi-GB files supported. Don't close this tab during transfer.</p>
 
-  <!-- Selection preview (visible as soon as files are picked) -->
-  <div id="selection-summary" style="display:none; margin-top:10px; padding:10px 12px;
+  <label>Files</label>
+  <!-- Drag-drop zone wraps the (visually-hidden) file input + an "Add files" button -->
+  <div id="dropzone" tabindex="0"
+       style="padding:18px; border:1.5px dashed var(--border); border-radius:10px;
+              background:rgba(94,198,255,0.03); text-align:center; cursor:pointer;
+              transition: all 0.15s ease;">
+    <input type="file" id="file-picker" name="files" multiple
+           style="position:absolute; left:-9999px; width:1px; height:1px; opacity:0;">
+    <div style="font-size:14px; color:var(--fg)">
+      <b>Click to add files</b> or drag-and-drop here
+    </div>
+    <div class="muted" style="font-size:12px; margin-top:4px">
+      You can click multiple times to add more — selections accumulate.
+    </div>
+  </div>
+
+  <!-- Live selection list (visible as soon as files are picked) -->
+  <div id="selection-summary" style="display:none; margin-top:12px; padding:12px 14px;
                                      border:1px solid var(--border); border-radius:8px;
                                      background:rgba(94,198,255,0.04)">
-    <div style="font-size:13px"><b id="sel-count">0</b> file<span id="sel-plural">s</span> selected · total <b id="sel-bytes">0 B</b></div>
-    <div id="sel-list" class="muted" style="font-size:12px; margin-top:6px; max-height:160px; overflow-y:auto"></div>
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px">
+      <div style="font-size:13px"><b id="sel-count">0</b> file<span id="sel-plural">s</span> queued · total <b id="sel-bytes">0 B</b></div>
+      <button type="button" id="sel-clear" class="btn"
+              style="padding:3px 10px; font-size:12px">Clear all</button>
+    </div>
+    <div id="sel-list" style="font-size:13px; max-height:240px; overflow-y:auto;
+                              border-top:1px solid var(--border); padding-top:8px"></div>
   </div>
 
   <div id="upload-list" style="margin-top:12px"></div>
@@ -50,10 +68,32 @@
 </form>
 </div>
 
+<style>
+  #dropzone:hover { border-color: var(--accent); background: rgba(94,198,255,0.06); }
+  #dropzone.dragover {
+    border-color: var(--accent-2); background: rgba(94,198,255,0.12);
+    transform: scale(1.005);
+  }
+  .sel-item {
+    display: flex; align-items: center; gap: 10px; padding: 6px 0;
+    border-bottom: 1px dotted var(--border);
+  }
+  .sel-item:last-child { border-bottom: none; }
+  .sel-item .name { flex: 1; min-width: 0; overflow: hidden;
+                    text-overflow: ellipsis; white-space: nowrap; }
+  .sel-item .size { color: var(--muted); font-size: 12px; }
+  .sel-item .remove {
+    background: none; border: none; color: var(--danger); cursor: pointer;
+    font-size: 18px; padding: 0 4px; line-height: 1; opacity: 0.6;
+  }
+  .sel-item .remove:hover { opacity: 1; }
+</style>
+
 <script>
 (function() {
   const form      = document.getElementById('outbound-form');
   const picker    = document.getElementById('file-picker');
+  const dropzone  = document.getElementById('dropzone');
   const list      = document.getElementById('upload-list');
   const overall   = document.getElementById('overall');
   const overallBar = document.getElementById('overall-bar');
@@ -66,9 +106,9 @@
   const selBytes  = document.getElementById('sel-bytes');
   const selList   = document.getElementById('sel-list');
   const selPlural = document.getElementById('sel-plural');
+  const selClear  = document.getElementById('sel-clear');
 
   function log(...args) { try { console.log('[speedyfiles]', ...args); } catch(e) {} }
-
   function fmt(n) {
     const u=['B','KB','MB','GB','TB']; let i=0;
     while (n>=1024 && i<u.length-1) { n/=1024; i++; }
@@ -88,9 +128,49 @@
     return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   }
 
-  // ---- selection preview (live as user picks files) ----
+  // ============================================================
+  // SELECTION STATE — running list, append-on-pick, dedupe
+  //
+  // The native <input type=file multiple> REPLACES its selection each
+  // time the picker opens — so the naive UX would silently drop the
+  // user's previous picks. We keep our own array and treat each
+  // change/drop event as "add these to the running selection".
+  // ============================================================
+  const state = { files: [] };
+  function fileKey(f) {
+    // Best identity we have for a File without reading bytes:
+    return f.name + '|' + f.size + '|' + (f.lastModified || 0);
+  }
+
+  function addFiles(newFiles) {
+    const before = state.files.length;
+    const seen = new Set(state.files.map(fileKey));
+    let added = 0, duped = 0;
+    for (const f of newFiles) {
+      const k = fileKey(f);
+      if (seen.has(k)) { duped++; continue; }
+      state.files.push(f); seen.add(k); added++;
+    }
+    log(`add: ${newFiles.length} new (${added} added, ${duped} dupes) → ${state.files.length} total`);
+    refreshSelectionPreview();
+    return added;
+  }
+
+  function removeFileAt(idx) {
+    if (idx < 0 || idx >= state.files.length) return;
+    const removed = state.files.splice(idx, 1)[0];
+    log(`remove: ${removed.name} → ${state.files.length} total`);
+    refreshSelectionPreview();
+  }
+
+  function clearFiles() {
+    state.files = [];
+    log('cleared selection');
+    refreshSelectionPreview();
+  }
+
   function refreshSelectionPreview() {
-    const files = Array.from(picker.files || []);
+    const files = state.files;
     if (!files.length) {
       summary.style.display = 'none';
       return;
@@ -101,14 +181,61 @@
     const total = files.reduce((a, f) => a + f.size, 0);
     selBytes.textContent = fmt(total);
     selList.innerHTML = files.map((f, i) =>
-      `<div>${i + 1}. ${escapeHtml(f.name)} · <span class="muted">${fmt(f.size)}</span></div>`
-    ).join('');
-    log(`selection: ${files.length} files, total ${fmt(total)}`,
-        files.map(f => ({ name: f.name, size: f.size })));
+      `<div class="sel-item">
+         <div class="name">${i + 1}. ${escapeHtml(f.name)}</div>
+         <div class="size">${fmt(f.size)}</div>
+         <button type="button" class="remove" data-idx="${i}" title="Remove">×</button>
+       </div>`).join('');
+    selList.querySelectorAll('button.remove').forEach(btn => {
+      btn.addEventListener('click', () => removeFileAt(parseInt(btn.dataset.idx, 10)));
+    });
   }
-  picker.addEventListener('change', refreshSelectionPreview);
 
-  // ---- progress rows ----
+  // ============================================================
+  // INPUTS — file picker + drag-drop + click-to-open
+  // ============================================================
+  picker.addEventListener('change', () => {
+    const newFiles = Array.from(picker.files || []);
+    addFiles(newFiles);
+    // Reset so the SAME file can be picked again later (the change event
+    // wouldn't fire otherwise); also so the form's native FormData doesn't
+    // re-include these.
+    picker.value = '';
+  });
+
+  // Clicking anywhere on the dropzone opens the file picker. Skip when
+  // the click originated inside the file-input itself (defensive).
+  dropzone.addEventListener('click', (e) => {
+    if (e.target === picker) return;
+    picker.click();
+  });
+  dropzone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); picker.click(); }
+  });
+
+  // Drag-and-drop
+  ['dragenter', 'dragover'].forEach(evt =>
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.add('dragover');
+    })
+  );
+  ['dragleave', 'drop'].forEach(evt =>
+    dropzone.addEventListener(evt, (e) => {
+      e.preventDefault(); e.stopPropagation();
+      dropzone.classList.remove('dragover');
+    })
+  );
+  dropzone.addEventListener('drop', (e) => {
+    const files = Array.from(e.dataTransfer.files || []);
+    if (files.length) addFiles(files);
+  });
+
+  selClear.addEventListener('click', clearFiles);
+
+  // ============================================================
+  // UPLOAD
+  // ============================================================
   let rows = [];
   let totalBytes = 0;
 
@@ -151,9 +278,7 @@
   function uploadOne(pkgId, row) {
     return new Promise((resolve, reject) => {
       const file = row._file;
-      if (!file) {
-        return reject(new Error('missing file reference on row ' + row._index));
-      }
+      if (!file) return reject(new Error('missing file reference on row ' + row._index));
       const xhr = new XMLHttpRequest();
       const fd = new FormData();
       fd.append('file', file);
@@ -178,7 +303,6 @@
         updateOverall();
       };
       xhr.onload = () => {
-        // Accept any 2xx as success
         if (xhr.status >= 200 && xhr.status < 300) {
           bar.style.width = '100%';
           row._loaded = file.size;
@@ -208,7 +332,6 @@
       };
       xhr.onabort = () => {
         status.innerHTML = '<span class="danger">aborted</span>';
-        log(`[${row._index + 1}/${rows.length}] ABORTED: ${file.name}`);
         reject(new Error('aborted: ' + file.name));
       };
       xhr.open('POST', '/dash/packages/' + encodeURIComponent(pkgId)
@@ -219,13 +342,10 @@
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-
-    // Snapshot the file selection IMMEDIATELY into a stable array so any
-    // later state change in the picker can't affect us.
-    const files = Array.from(picker.files || []);
-    log(`submit: ${files.length} file(s) selected`);
+    const files = state.files.slice();   // stable snapshot
+    log(`submit: ${files.length} file(s) queued`);
     if (!files.length) {
-      statusEl.innerHTML = '<span class="danger">no files selected</span>';
+      statusEl.innerHTML = '<span class="danger">Add at least one file before sending.</span>';
       return;
     }
 
@@ -262,7 +382,8 @@
     }
 
     if (errors.length) {
-      const lines = errors.map(e => `  • file ${e.index} (${escapeHtml(e.name)}): ${escapeHtml(e.message)}`).join('<br>');
+      const lines = errors.map(e =>
+        `  • file ${e.index} (${escapeHtml(e.name)}): ${escapeHtml(e.message)}`).join('<br>');
       statusEl.innerHTML =
         `<span class="danger">${errors.length} of ${rows.length} file(s) failed.</span><br>` +
         `<span class="muted" style="font-size:12px">${lines}</span><br>` +
@@ -271,7 +392,7 @@
       return;
     }
 
-    // Summary line — total bytes + total time + avg rate
+    // Summary
     const totalDur = rows.reduce((a, r) => a + (r._duration_ms || 0), 0);
     if (totalDur > 0) {
       const avgBps = totalBytes * 1000 / totalDur;
