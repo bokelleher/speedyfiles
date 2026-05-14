@@ -14,7 +14,7 @@ INSTALL_DIR=${INSTALL_DIR:-/opt/speedyfiles}
 DATA_DIR=${DATA_DIR:-/var/lib/speedyfiles}
 FILES_DIR=${FILES_DIR:-/srv/files}
 SERVICE_USER=${SERVICE_USER:-speedyfiles}
-REPO_URL=${REPO_URL:-https://github.com/speedyfiles/speedyfiles.git}
+REPO_URL=${REPO_URL:-https://github.com/bokelleher/speedyfiles.git}
 GIT_REF=${GIT_REF:-main}
 
 bold() { printf "\033[1m%s\033[0m\n" "$1"; }

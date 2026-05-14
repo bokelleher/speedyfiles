@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/fastapi-0.115-009688.svg)](https://fastapi.tiangolo.com/)
-[![Docker pulls](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://github.com/speedyfiles/speedyfiles/pkgs/container/speedyfiles)
+[![Docker pulls](https://img.shields.io/badge/docker-ghcr.io-blue.svg)](https://github.com/bokelleher/speedyfiles/pkgs/container/speedyfiles)
 
 Send and receive multi-gigabyte packages with **expiring magic links**, **per-recipient isolation**, **signed-email notifications**, and a **clean admin UI**. Your customers, your storage, your rules.
 
@@ -142,7 +142,7 @@ After 10 consecutive failures the hook auto-disables. Configure under **Settings
 ## Development
 
 ```bash
-git clone https://github.com/speedyfiles/speedyfiles
+git clone https://github.com/bokelleher/speedyfiles
 cd speedyfiles
 python3 -m venv .venv
 source .venv/bin/activate

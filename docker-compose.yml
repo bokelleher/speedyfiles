@@ -10,7 +10,7 @@
 
 services:
   speedyfiles:
-    image: ghcr.io/speedyfiles/speedyfiles:latest
+    image: ghcr.io/bokelleher/speedyfiles:latest
     # Or build from source:
     # build: .
     container_name: speedyfiles

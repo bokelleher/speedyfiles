@@ -27,9 +27,9 @@ classifiers = [
 [project.urls]
 Homepage = "https://speedyfiles.app"
 Documentation = "https://speedyfiles.app/docs/"
-Repository = "https://github.com/speedyfiles/speedyfiles"
-Issues = "https://github.com/speedyfiles/speedyfiles/issues"
-Changelog = "https://github.com/speedyfiles/speedyfiles/blob/main/CHANGELOG.md"
+Repository = "https://github.com/bokelleher/speedyfiles"
+Issues = "https://github.com/bokelleher/speedyfiles/issues"
+Changelog = "https://github.com/bokelleher/speedyfiles/blob/main/CHANGELOG.md"
 
 [project.scripts]
 speedyfiles = "app.cli:main"

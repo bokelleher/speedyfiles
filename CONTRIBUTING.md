@@ -5,7 +5,7 @@ Thanks for your interest! SpeedyFiles is small, focused, and intends to stay tha
 ## Quickstart for development
 
 ```bash
-git clone https://github.com/speedyfiles/speedyfiles
+git clone https://github.com/bokelleher/speedyfiles
 cd speedyfiles
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt -r requirements-dev.txt
