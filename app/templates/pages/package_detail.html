@@ -9,7 +9,12 @@
   {% else %}<span class="pill pill-expired">{{ 'expired' if pkg.expires_at <= now else pkg.status }}</span>{% endif %}
 </h1>
 
-{# Draft callout — only shows for outbound packages that haven't been finalized yet #}
+{# Add-files panel + (draft only) the "send now" callout. Outbound only,
+   and only while the package is still mutable (draft or active-not-expired). #}
+{% set is_addable = pkg.direction == 'outbound'
+                    and pkg.status in ('draft', 'active')
+                    and pkg.expires_at > now %}
+
 {% if pkg.status == 'draft' and pkg.direction == 'outbound' %}
 {% set complete_files = files|selectattr('state','equalto','complete')|list %}
 <div class="panel" style="border-color:var(--accent); background:rgba(94,198,255,0.05)">
@@ -31,9 +36,21 @@
     <a class="btn" href="#add-more">Add more files ↓</a>
   </div>
 </div>
+{% endif %}
 
-<h2 id="add-more">Add files to this draft</h2>
+{% if is_addable %}
+<h2 id="add-more">
+  {% if pkg.status == 'draft' %}Add files to this draft
+  {% else %}Add more files{% endif %}
+</h2>
 <div class="panel" style="max-width:780px">
+  {% if pkg.status == 'active' %}
+  <p class="muted" style="font-size:13px; margin:0 0 12px 0">
+    This package has already been sent. New files appear in the recipient's
+    download page immediately — they don't need a new email (their existing
+    link will show the additions on their next visit or refresh).
+  </p>
+  {% endif %}
   <div id="dz" tabindex="0"
        style="padding:18px; border:1.5px dashed var(--border); border-radius:10px;
               background:rgba(94,198,255,0.03); text-align:center; cursor:pointer">
@@ -144,6 +161,7 @@
 })();
 </script>
 {% endif %}
+
 <div class="panel">
   <div><b>Direction:</b> {{ pkg.direction }}</div>
   <div><b>Recipient:</b> {{ pkg.recipient_name }} &lt;{{ pkg.recipient_email }}&gt;</div>
