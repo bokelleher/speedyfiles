@@ -56,7 +56,14 @@
 
   <div id="upload-list" style="margin-top:12px"></div>
   <div id="overall" style="display:none; margin-top:12px">
-    <div class="muted" style="font-size:12px">Overall: <span id="overall-text">0 / 0 bytes</span></div>
+    <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:4px">
+      <div class="muted" style="font-size:12px">Overall: <span id="overall-text">0 / 0 bytes</span></div>
+      <div id="queue-controls" style="display:none; gap:6px">
+        <button type="button" id="btn-pause" class="btn" style="padding:3px 10px; font-size:12px">⏸ Pause queue</button>
+        <button type="button" id="btn-resume" class="btn btn-primary" style="padding:3px 10px; font-size:12px; display:none">▶ Resume</button>
+        <button type="button" id="btn-cancel-all" class="btn btn-danger" style="padding:3px 10px; font-size:12px">✕ Cancel remaining</button>
+      </div>
+    </div>
     <div class="progress" style="height:6px"><div id="overall-bar" style="width:0%"></div></div>
   </div>
 
@@ -238,6 +245,34 @@
   // ============================================================
   let rows = [];
   let totalBytes = 0;
+  const queue = { paused: false, aborted: false };
+  const queueControls = document.getElementById('queue-controls');
+  const btnPause      = document.getElementById('btn-pause');
+  const btnResume     = document.getElementById('btn-resume');
+  const btnCancelAll  = document.getElementById('btn-cancel-all');
+
+  btnPause.addEventListener('click', () => {
+    queue.paused = true;
+    btnPause.style.display = 'none';
+    btnResume.style.display = 'inline-flex';
+    log('queue paused (current upload, if any, will complete)');
+  });
+  btnResume.addEventListener('click', () => {
+    queue.paused = false;
+    btnResume.style.display = 'none';
+    btnPause.style.display = 'inline-flex';
+    log('queue resumed');
+  });
+  btnCancelAll.addEventListener('click', () => {
+    if (!confirm('Cancel the in-flight upload and skip all remaining files?')) return;
+    queue.aborted = true;
+    queue.paused = false;  // unblock the loop if currently paused
+    // Abort any in-flight XHR
+    for (const r of rows) {
+      if (r._state === 'uploading' && r._xhr) r._xhr.abort();
+    }
+    log('queue cancel-all triggered');
+  });
 
   function buildRows(files) {
     list.innerHTML = '';
@@ -253,17 +288,40 @@
         + '<div class="muted" style="font-size:12px">' + fmt(f.size) + ' <span class="fspeed"></span></div>'
         + '<div class="progress bar"><div style="width:0%"></div></div>'
         + '</div>'
-        + '<span class="fstatus muted" style="min-width:90px;text-align:right">queued</span>';
+        + '<div style="display:flex; align-items:center; gap:6px; min-width:140px; justify-content:flex-end">'
+        + '  <span class="fstatus muted" style="text-align:right">queued</span>'
+        + '  <button type="button" class="row-cancel btn" title="Skip this file"'
+        + '          style="padding:2px 8px; font-size:12px; color:var(--danger); border-color:var(--border)">✕</button>'
+        + '</div>';
       list.appendChild(row);
       row._loaded = 0;
       row._file = f;
       row._index = i;
+      row._state = 'queued';  // queued | uploading | done | failed | cancelled | skipped
+      row._cancelBtn = row.querySelector('.row-cancel');
+      row._cancelBtn.addEventListener('click', () => cancelRow(row));
       rows.push(row);
       totalBytes += f.size;
     });
     if (rows.length) {
       overall.style.display = 'block';
       updateOverall();
+    }
+  }
+
+  function cancelRow(row) {
+    if (row._state === 'done' || row._state === 'failed'
+        || row._state === 'cancelled' || row._state === 'skipped') return;
+    if (row._state === 'uploading' && row._xhr) {
+      log(`[${row._index + 1}/${rows.length}] user-cancel in-flight: ${row._file.name}`);
+      row._xhr.abort();  // → onabort → reject → loop picks up
+    } else {
+      // Queued and not yet started — mark skipped so the loop won't process it
+      log(`[${row._index + 1}/${rows.length}] user-skip queued: ${row._file.name}`);
+      row._state = 'skipped';
+      const statusEl = row.querySelector('.fstatus');
+      statusEl.innerHTML = '<span class="danger">skipped</span>';
+      row._cancelBtn.style.display = 'none';
     }
   }
 
@@ -280,6 +338,8 @@
       const file = row._file;
       if (!file) return reject(new Error('missing file reference on row ' + row._index));
       const xhr = new XMLHttpRequest();
+      row._xhr = xhr;
+      row._state = 'uploading';
       const fd = new FormData();
       fd.append('file', file);
       const bar    = row.querySelector('.bar > div');
@@ -303,13 +363,16 @@
         updateOverall();
       };
       xhr.onload = () => {
+        row._xhr = null;
         if (xhr.status >= 200 && xhr.status < 300) {
           bar.style.width = '100%';
           row._loaded = file.size;
           updateOverall();
           let dur = null;
           try { const j = JSON.parse(xhr.responseText); dur = j.duration_ms; row._duration_ms = dur; } catch(e) {}
+          row._state = 'done';
           status.innerHTML = '<span style="color:var(--good)">✓</span> done';
+          row._cancelBtn.style.display = 'none';
           if (dur != null) {
             const bps = file.size * 1000 / Math.max(dur, 1);
             speed.textContent = 'Transferred ' + fmt(file.size) + ' in ' + fmtDuration(dur)
@@ -318,6 +381,7 @@
           log(`[${row._index + 1}/${rows.length}] done: ${file.name}`);
           resolve();
         } else {
+          row._state = 'failed';
           status.innerHTML = '<span class="danger">failed (' + xhr.status + ')</span>';
           speed.textContent = '';
           log(`[${row._index + 1}/${rows.length}] FAILED ${xhr.status}: ${file.name}`,
@@ -326,13 +390,19 @@
         }
       };
       xhr.onerror = () => {
+        row._xhr = null;
+        row._state = 'failed';
         status.innerHTML = '<span class="danger">network error</span>';
         log(`[${row._index + 1}/${rows.length}] NETWORK ERROR: ${file.name}`);
         reject(new Error('network error for ' + file.name));
       };
       xhr.onabort = () => {
-        status.innerHTML = '<span class="danger">aborted</span>';
-        reject(new Error('aborted: ' + file.name));
+        row._xhr = null;
+        row._state = 'cancelled';
+        status.innerHTML = '<span class="danger">cancelled</span>';
+        speed.textContent = '';
+        row._cancelBtn.style.display = 'none';
+        reject(new Error('cancelled by user'));
       };
       xhr.open('POST', '/dash/packages/' + encodeURIComponent(pkgId)
                        + '/upload?_csrf=' + encodeURIComponent(csrf));
@@ -352,6 +422,11 @@
     submitBtn.disabled = true;
     statusEl.textContent = 'creating package…';
     buildRows(files);
+    queue.paused = false;
+    queue.aborted = false;
+    queueControls.style.display = 'flex';
+    btnPause.style.display = 'inline-flex';
+    btnResume.style.display = 'none';
 
     // Phase 1 — POST metadata only
     const fd = new FormData(form);
@@ -369,26 +444,78 @@
       return;
     }
 
-    // Phase 2 — sequential per-file upload
-    const errors = [];
+    // Phase 2 — sequential per-file upload with pause/cancel support
+    const results = { ok: 0, failed: [], cancelled: [], skipped: [] };
     for (const row of rows) {
+      // Honor "cancel remaining" — mark all remaining queued rows skipped
+      if (queue.aborted) {
+        if (row._state === 'queued') {
+          row._state = 'skipped';
+          row.querySelector('.fstatus').innerHTML = '<span class="danger">cancelled</span>';
+          row._cancelBtn.style.display = 'none';
+          results.skipped.push({ index: row._index + 1, name: row._file.name });
+        }
+        continue;
+      }
+      // Honor "pause" — wait until resumed (or aborted)
+      while (queue.paused && !queue.aborted) {
+        statusEl.innerHTML = '<span style="color:var(--warn,#f0c674)">⏸ Queue paused. Click Resume to continue.</span>';
+        await new Promise(r => setTimeout(r, 200));
+      }
+      if (queue.aborted) { continue; }
+      // Row may have been individually skipped while queued
+      if (row._state === 'skipped') {
+        results.skipped.push({ index: row._index + 1, name: row._file.name });
+        continue;
+      }
       statusEl.textContent = `uploading file ${row._index + 1} of ${rows.length} (${row._file.name})…`;
       try {
         await uploadOne(pkgId, row);
+        results.ok++;
       } catch (err) {
-        errors.push({ index: row._index + 1, name: row._file.name, message: err.message });
+        if (row._state === 'cancelled') {
+          results.cancelled.push({ index: row._index + 1, name: row._file.name });
+        } else {
+          results.failed.push({ index: row._index + 1, name: row._file.name, message: err.message });
+        }
         log('upload error:', err);
       }
     }
 
-    if (errors.length) {
-      const lines = errors.map(e =>
-        `  • file ${e.index} (${escapeHtml(e.name)}): ${escapeHtml(e.message)}`).join('<br>');
+    queueControls.style.display = 'none';
+    const errors = results.failed;
+
+    // If anything failed/cancelled/skipped, show a recap. ALSO still
+    // finalize automatically if at least one file actually succeeded —
+    // the package isn't useful without files, but a partial send is.
+    const incidents = [
+      ...results.failed.map(e => ({ ...e, kind: 'failed' })),
+      ...results.cancelled.map(e => ({ ...e, kind: 'cancelled' })),
+      ...results.skipped.map(e => ({ ...e, kind: 'skipped' })),
+    ];
+    if (incidents.length) {
+      const lines = incidents.map(e => {
+        const tail = e.message ? `: ${escapeHtml(e.message)}` : '';
+        return `  • file ${e.index} (${escapeHtml(e.name)}) — ${e.kind}${tail}`;
+      }).join('<br>');
+      // If NOTHING succeeded, abort early — there's nothing to send.
+      if (results.ok === 0) {
+        statusEl.innerHTML =
+          `<span class="danger">No files uploaded successfully.</span><br>` +
+          `<span class="muted" style="font-size:12px">${lines}</span><br>` +
+          `<a href="/dash/packages/${pkgId}" class="btn" style="margin-top:8px">Open draft package</a>`;
+        submitBtn.disabled = false;
+        return;
+      }
+      // Otherwise let the user decide: finalize anyway, or open the draft.
       statusEl.innerHTML =
-        `<span class="danger">${errors.length} of ${rows.length} file(s) failed.</span><br>` +
+        `<span class="danger">${incidents.length} of ${rows.length} file(s) didn't transfer.</span> ` +
+        `<span>${results.ok} succeeded.</span><br>` +
         `<span class="muted" style="font-size:12px">${lines}</span><br>` +
+        `<button type="button" id="btn-finalize-anyway" class="btn btn-primary" style="margin-top:8px">Send the ${results.ok} that succeeded</button> ` +
         `<a href="/dash/packages/${pkgId}" class="btn" style="margin-top:8px">Open draft package</a>`;
       submitBtn.disabled = false;
+      document.getElementById('btn-finalize-anyway').addEventListener('click', () => finalize(pkgId));
       return;
     }
 
@@ -401,7 +528,10 @@
                              + ' (avg ' + fmt(avgBps) + '/s)';
     }
 
-    // Phase 3 — finalize
+    await finalize(pkgId);
+  });
+
+  async function finalize(pkgId) {
     statusEl.textContent = 'sending notification…';
     try {
       const resp = await fetch('/dash/packages/' + encodeURIComponent(pkgId)
@@ -417,7 +547,7 @@
                          + '">open the package</a> and click finalize from there.</span>';
       submitBtn.disabled = false;
     }
-  });
+  }
 })();
 </script>
 {% endblock %}
