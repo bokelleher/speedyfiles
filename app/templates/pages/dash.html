@@ -33,7 +33,11 @@
       </td>
       <td>{{ p.expires_at.strftime('%Y-%m-%d %H:%M') }}</td>
       <td>{{ p.created_at.strftime('%Y-%m-%d') }}</td>
-      {% if user.role == 'admin' %}<td>user #{{ p.owner_user_id }}</td>{% endif %}
+      {% if user.role == 'admin' %}
+        <td>{% if p.owner %}{{ p.owner.display_name }}<br>
+            <span class="muted" style="font-size:11px">{{ p.owner.email }}</span>
+        {% else %}<span class="muted">—</span>{% endif %}</td>
+      {% endif %}
       <td style="text-align:right; white-space:nowrap">
         <form method="post" action="/dash/packages/{{ p.id }}/delete?_csrf={{ csrf_token(request) }}" class="inline"
               data-title={{ p.title|tojson }}

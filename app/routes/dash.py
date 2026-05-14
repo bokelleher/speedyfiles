@@ -45,7 +45,10 @@ async def dash(
     user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
-    q = select(Package).order_by(Package.created_at.desc())
+    from sqlalchemy.orm import selectinload
+    q = (select(Package)
+         .options(selectinload(Package.owner))
+         .order_by(Package.created_at.desc()))
     if user.role != "admin":
         q = q.where(Package.owner_user_id == user.id)
     pkgs = (await db.scalars(q)).all()
