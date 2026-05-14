@@ -28,6 +28,14 @@
   <input type="file" id="file-picker" name="files" multiple required>
   <p class="muted" style="font-size:12px">Multi-GB files supported. Don't close this tab during transfer.</p>
 
+  <!-- Selection preview (visible as soon as files are picked) -->
+  <div id="selection-summary" style="display:none; margin-top:10px; padding:10px 12px;
+                                     border:1px solid var(--border); border-radius:8px;
+                                     background:rgba(94,198,255,0.04)">
+    <div style="font-size:13px"><b id="sel-count">0</b> file<span id="sel-plural">s</span> selected · total <b id="sel-bytes">0 B</b></div>
+    <div id="sel-list" class="muted" style="font-size:12px; margin-top:6px; max-height:160px; overflow-y:auto"></div>
+  </div>
+
   <div id="upload-list" style="margin-top:12px"></div>
   <div id="overall" style="display:none; margin-top:12px">
     <div class="muted" style="font-size:12px">Overall: <span id="overall-text">0 / 0 bytes</span></div>
@@ -44,22 +52,28 @@
 
 <script>
 (function() {
-  const form    = document.getElementById('outbound-form');
-  const picker  = document.getElementById('file-picker');
-  const list    = document.getElementById('upload-list');
-  const overall = document.getElementById('overall');
+  const form      = document.getElementById('outbound-form');
+  const picker    = document.getElementById('file-picker');
+  const list      = document.getElementById('upload-list');
+  const overall   = document.getElementById('overall');
   const overallBar = document.getElementById('overall-bar');
   const overallTxt = document.getElementById('overall-text');
   const submitBtn = document.getElementById('submit-btn');
   const statusEl  = document.getElementById('status');
   const csrf      = new URLSearchParams(form.action.split('?')[1]).get('_csrf');
+  const summary   = document.getElementById('selection-summary');
+  const selCount  = document.getElementById('sel-count');
+  const selBytes  = document.getElementById('sel-bytes');
+  const selList   = document.getElementById('sel-list');
+  const selPlural = document.getElementById('sel-plural');
+
+  function log(...args) { try { console.log('[speedyfiles]', ...args); } catch(e) {} }
 
   function fmt(n) {
     const u=['B','KB','MB','GB','TB']; let i=0;
     while (n>=1024 && i<u.length-1) { n/=1024; i++; }
     return (i ? n.toFixed(1) : n) + ' ' + u[i];
   }
-
   function fmtDuration(ms) {
     if (ms < 1000) return ms + ' ms';
     const s = ms / 1000;
@@ -70,9 +84,76 @@
     const h = Math.floor(m / 60), rm = m % 60;
     return h + 'h ' + rm + 'm ' + sec + 's';
   }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  }
 
-  function uploadOne(pkgId, file, row) {
+  // ---- selection preview (live as user picks files) ----
+  function refreshSelectionPreview() {
+    const files = Array.from(picker.files || []);
+    if (!files.length) {
+      summary.style.display = 'none';
+      return;
+    }
+    summary.style.display = 'block';
+    selCount.textContent = files.length;
+    selPlural.textContent = files.length === 1 ? '' : 's';
+    const total = files.reduce((a, f) => a + f.size, 0);
+    selBytes.textContent = fmt(total);
+    selList.innerHTML = files.map((f, i) =>
+      `<div>${i + 1}. ${escapeHtml(f.name)} · <span class="muted">${fmt(f.size)}</span></div>`
+    ).join('');
+    log(`selection: ${files.length} files, total ${fmt(total)}`,
+        files.map(f => ({ name: f.name, size: f.size })));
+  }
+  picker.addEventListener('change', refreshSelectionPreview);
+
+  // ---- progress rows ----
+  let rows = [];
+  let totalBytes = 0;
+
+  function buildRows(files) {
+    list.innerHTML = '';
+    rows = [];
+    totalBytes = 0;
+    files.forEach((f, i) => {
+      const row = document.createElement('div');
+      row.className = 'file-row';
+      row.innerHTML =
+        '<div style="flex:1; min-width:0">'
+        + '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+        + (i + 1) + '. ' + escapeHtml(f.name) + '</div>'
+        + '<div class="muted" style="font-size:12px">' + fmt(f.size) + ' <span class="fspeed"></span></div>'
+        + '<div class="progress bar"><div style="width:0%"></div></div>'
+        + '</div>'
+        + '<span class="fstatus muted" style="min-width:90px;text-align:right">queued</span>';
+      list.appendChild(row);
+      row._loaded = 0;
+      row._file = f;
+      row._index = i;
+      rows.push(row);
+      totalBytes += f.size;
+    });
+    if (rows.length) {
+      overall.style.display = 'block';
+      updateOverall();
+    }
+  }
+
+  function updateOverall() {
+    const loaded = rows.reduce((a, r) => a + (r._loaded || 0), 0);
+    const pct = totalBytes ? (loaded / totalBytes * 100) : 0;
+    overallBar.style.width = pct.toFixed(1) + '%';
+    overallTxt.textContent = fmt(loaded) + ' / ' + fmt(totalBytes)
+                           + ' (' + pct.toFixed(1) + '%)';
+  }
+
+  function uploadOne(pkgId, row) {
     return new Promise((resolve, reject) => {
+      const file = row._file;
+      if (!file) {
+        return reject(new Error('missing file reference on row ' + row._index));
+      }
       const xhr = new XMLHttpRequest();
       const fd = new FormData();
       fd.append('file', file);
@@ -80,6 +161,8 @@
       const status = row.querySelector('.fstatus');
       const speed  = row.querySelector('.fspeed');
       status.textContent = 'uploading…';
+      log(`[${row._index + 1}/${rows.length}] start: ${file.name} (${fmt(file.size)})`);
+
       let lastBytes = 0, lastT = performance.now();
       xhr.upload.onprogress = (ev) => {
         if (!ev.lengthComputable) return;
@@ -95,7 +178,8 @@
         updateOverall();
       };
       xhr.onload = () => {
-        if (xhr.status === 200) {
+        // Accept any 2xx as success
+        if (xhr.status >= 200 && xhr.status < 300) {
           bar.style.width = '100%';
           row._loaded = file.size;
           updateOverall();
@@ -107,16 +191,25 @@
             speed.textContent = 'Transferred ' + fmt(file.size) + ' in ' + fmtDuration(dur)
                               + ' (' + fmt(bps) + '/s)';
           }
+          log(`[${row._index + 1}/${rows.length}] done: ${file.name}`);
           resolve();
         } else {
           status.innerHTML = '<span class="danger">failed (' + xhr.status + ')</span>';
           speed.textContent = '';
-          reject(new Error('HTTP ' + xhr.status));
+          log(`[${row._index + 1}/${rows.length}] FAILED ${xhr.status}: ${file.name}`,
+              'response:', xhr.responseText.slice(0, 200));
+          reject(new Error('HTTP ' + xhr.status + ' for ' + file.name));
         }
       };
       xhr.onerror = () => {
         status.innerHTML = '<span class="danger">network error</span>';
-        reject(new Error('network'));
+        log(`[${row._index + 1}/${rows.length}] NETWORK ERROR: ${file.name}`);
+        reject(new Error('network error for ' + file.name));
+      };
+      xhr.onabort = () => {
+        status.innerHTML = '<span class="danger">aborted</span>';
+        log(`[${row._index + 1}/${rows.length}] ABORTED: ${file.name}`);
+        reject(new Error('aborted: ' + file.name));
       };
       xhr.open('POST', '/dash/packages/' + encodeURIComponent(pkgId)
                        + '/upload?_csrf=' + encodeURIComponent(csrf));
@@ -124,88 +217,61 @@
     });
   }
 
-  let rows = [];
-  let totalBytes = 0;
-  function updateOverall() {
-    const loaded = rows.reduce((a, r) => a + (r._loaded || 0), 0);
-    const pct = totalBytes ? (loaded / totalBytes * 100) : 0;
-    overallBar.style.width = pct.toFixed(1) + '%';
-    overallTxt.textContent = fmt(loaded) + ' / ' + fmt(totalBytes)
-                           + ' (' + pct.toFixed(1) + '%)';
-  }
-
-  function renderRows(files) {
-    list.innerHTML = '';
-    rows = [];
-    totalBytes = 0;
-    for (const f of files) {
-      const row = document.createElement('div');
-      row.className = 'file-row';
-      row.innerHTML =
-        '<div style="flex:1; min-width:0">'
-        + '<div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(f.name) + '</div>'
-        + '<div class="muted" style="font-size:12px">' + fmt(f.size) + ' <span class="fspeed"></span></div>'
-        + '<div class="progress bar"><div style="width:0%"></div></div>'
-        + '</div>'
-        + '<span class="fstatus muted" style="min-width:80px;text-align:right">queued</span>';
-      list.appendChild(row);
-      row._loaded = 0;
-      row._file = f;
-      rows.push(row);
-      totalBytes += f.size;
-    }
-    if (rows.length) {
-      overall.style.display = 'block';
-      updateOverall();
-    }
-  }
-  function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-  picker.addEventListener('change', () => renderRows(picker.files));
-
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    if (!picker.files.length) return;
+
+    // Snapshot the file selection IMMEDIATELY into a stable array so any
+    // later state change in the picker can't affect us.
+    const files = Array.from(picker.files || []);
+    log(`submit: ${files.length} file(s) selected`);
+    if (!files.length) {
+      statusEl.innerHTML = '<span class="danger">no files selected</span>';
+      return;
+    }
+
     submitBtn.disabled = true;
     statusEl.textContent = 'creating package…';
+    buildRows(files);
 
-    // Phase 1 — POST metadata (no files) to create a draft pkg
+    // Phase 1 — POST metadata only
     const fd = new FormData(form);
-    fd.delete('files');  // strip; we'll send each file in its own request
+    fd.delete('files');
     let pkgId;
     try {
-      const resp = await fetch(form.action, {method: 'POST', body: fd});
-      if (!resp.ok) throw new Error('create-pkg ' + resp.status);
+      const resp = await fetch(form.action, { method: 'POST', body: fd, credentials: 'same-origin' });
+      if (!resp.ok) throw new Error('create-pkg HTTP ' + resp.status);
       const j = await resp.json();
       pkgId = j.pkg_id;
+      log('package created:', pkgId);
     } catch (err) {
-      statusEl.innerHTML = '<span class="danger">' + err.message + '</span>';
+      statusEl.innerHTML = '<span class="danger">Could not create package: ' + escapeHtml(err.message) + '</span>';
       submitBtn.disabled = false;
       return;
     }
 
-    // Phase 2 — upload each file with progress
-    statusEl.textContent = 'uploading ' + rows.length + ' file' + (rows.length===1?'':'s') + '…';
-    let failed = 0;
+    // Phase 2 — sequential per-file upload
+    const errors = [];
     for (const row of rows) {
-      try { await uploadOne(pkgId, row._file, row); }
-      catch (err) { failed++; }
+      statusEl.textContent = `uploading file ${row._index + 1} of ${rows.length} (${row._file.name})…`;
+      try {
+        await uploadOne(pkgId, row);
+      } catch (err) {
+        errors.push({ index: row._index + 1, name: row._file.name, message: err.message });
+        log('upload error:', err);
+      }
     }
 
-    if (failed) {
-      statusEl.innerHTML = '<span class="danger">' + failed + ' file(s) failed — fix and click Send again, or open the package.</span>';
-      // Provide a recovery link
-      const a = document.createElement('a');
-      a.href = '/dash/packages/' + pkgId;
-      a.className = 'btn';
-      a.style.marginLeft = '8px';
-      a.textContent = 'Open draft package';
-      statusEl.appendChild(a);
+    if (errors.length) {
+      const lines = errors.map(e => `  • file ${e.index} (${escapeHtml(e.name)}): ${escapeHtml(e.message)}`).join('<br>');
+      statusEl.innerHTML =
+        `<span class="danger">${errors.length} of ${rows.length} file(s) failed.</span><br>` +
+        `<span class="muted" style="font-size:12px">${lines}</span><br>` +
+        `<a href="/dash/packages/${pkgId}" class="btn" style="margin-top:8px">Open draft package</a>`;
       submitBtn.disabled = false;
       return;
     }
 
-    // Summary line — total bytes + total time + avg rate (server-reported durations)
+    // Summary line — total bytes + total time + avg rate
     const totalDur = rows.reduce((a, r) => a + (r._duration_ms || 0), 0);
     if (totalDur > 0) {
       const avgBps = totalBytes * 1000 / totalDur;
@@ -214,17 +280,20 @@
                              + ' (avg ' + fmt(avgBps) + '/s)';
     }
 
-    // Phase 3 — finalize (mint link + send email)
+    // Phase 3 — finalize
     statusEl.textContent = 'sending notification…';
     try {
       const resp = await fetch('/dash/packages/' + encodeURIComponent(pkgId)
-                                + '/finalize?_csrf=' + encodeURIComponent(csrf),
-                                {method: 'POST'});
-      if (!resp.ok) throw new Error('finalize ' + resp.status);
+                               + '/finalize?_csrf=' + encodeURIComponent(csrf),
+                               { method: 'POST', credentials: 'same-origin' });
+      if (!resp.ok) throw new Error('finalize HTTP ' + resp.status);
       const j = await resp.json();
+      log('finalized; redirecting to', j.redirect || ('/dash/packages/' + pkgId));
       window.location = j.redirect || ('/dash/packages/' + pkgId);
     } catch (err) {
-      statusEl.innerHTML = '<span class="danger">finalize failed: ' + err.message + '</span>';
+      statusEl.innerHTML = '<span class="danger">Finalize failed: ' + escapeHtml(err.message)
+                         + '. Files uploaded OK — <a href="/dash/packages/' + pkgId
+                         + '">open the package</a> and click finalize from there.</span>';
       submitBtn.disabled = false;
     }
   });
