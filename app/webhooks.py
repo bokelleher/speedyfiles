@@ -28,6 +28,7 @@ EVENTS = (
     "package.created",
     "package.finalized",
     "package.file_uploaded",
+    "package.file_deleted",
     "package.downloaded",
     "package.revoked",
     "package.deleted",

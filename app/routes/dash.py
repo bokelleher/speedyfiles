@@ -178,6 +178,76 @@ async def new_outbound_submit(
     return JSONResponse({"pkg_id": pkg_id})
 
 
+@router.post("/dash/packages/{pkg_id}/files/{file_id}/delete")
+async def package_file_delete(
+    pkg_id: str, file_id: str, request: Request,
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Owner-or-admin: remove a single file from a package.
+
+    Works on any outbound package not yet expired or revoked (draft + active).
+    The file is removed from storage AND from the DB. The package's magic
+    link continues to work; the recipient just sees one fewer file on their
+    next visit.
+    """
+    pkg = await db.get(Package, pkg_id)
+    if pkg is None:
+        raise HTTPException(status_code=404)
+    if user.role != "admin" and pkg.owner_user_id != user.id:
+        raise HTTPException(status_code=403)
+    if pkg.direction != "outbound":
+        raise HTTPException(status_code=400, detail="only outbound packages support per-file delete via this route")
+    if pkg.status not in ("draft", "active"):
+        raise HTTPException(status_code=400, detail=f"package status {pkg.status!r}")
+
+    pf = await db.get(PackageFile, file_id)
+    if pf is None or pf.package_id != pkg_id:
+        raise HTTPException(status_code=404)
+
+    # Capture details for audit before delete
+    name, size, key = pf.original_name, pf.size_bytes or 0, pf.storage_key
+
+    # Remove the bytes from storage (best effort — orphaned bytes are cleaner
+    # to garbage-collect than orphaned DB rows)
+    backend = get_backend(pkg.storage_backend)
+    try:
+        # LocalStorage doesn't have delete_file (just delete_package). Inline
+        # the file removal via the resolved path. For S3 this'd need an
+        # equivalent helper; for v1 we only support local file deletion.
+        if backend.name == "local":
+            from pathlib import Path
+            abs_path = (backend.root / key).resolve()
+            if str(abs_path).startswith(str(backend.root.resolve())) and abs_path.exists():
+                abs_path.unlink()
+        elif backend.name == "s3":
+            # Delete a single S3 object
+            import aioboto3
+            async with backend._session.client("s3", region_name=backend.region) as s3:
+                await s3.delete_object(Bucket=backend.bucket, Key=key)
+    except Exception:
+        log.exception("storage delete failed for pkg=%s file=%s key=%s", pkg_id, file_id, key)
+        # Continue with DB delete; orphaned bytes are recoverable, orphaned rows aren't.
+
+    await db.delete(pf)
+    db.add(AccessLog(
+        user_id=user.id, package_id=pkg_id, action="admin_delete_file",
+        ip=request.client.host if request.client else None,
+        details_json=json.dumps({"file_id": file_id, "original_name": name,
+                                 "size_bytes": size, "pkg_status": pkg.status}),
+    ))
+    await db.commit()
+
+    try:
+        await fire_event(db, "package.file_deleted", package_id=pkg_id, payload={
+            "file_id": file_id, "original_name": name, "size_bytes": size,
+        })
+    except Exception:
+        log.exception("webhook fire failed: package.file_deleted")
+
+    return RedirectResponse(f"/dash/packages/{pkg_id}", status_code=303)
+
+
 @router.post("/dash/packages/{pkg_id}/upload")
 async def package_upload_one(
     pkg_id: str, request: Request,

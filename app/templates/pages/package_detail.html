@@ -188,8 +188,13 @@
 <h2>Files</h2>
 <div class="panel" style="padding:0">
 {% if files %}
+{% set can_delete_files = pkg.direction == 'outbound'
+                          and pkg.status in ('draft', 'active') %}
 <table>
-  <thead><tr><th>Name</th><th>Size</th><th>Transfer</th><th>State</th><th>Uploaded</th></tr></thead>
+  <thead><tr>
+    <th>Name</th><th>Size</th><th>Transfer</th><th>State</th><th>Uploaded</th>
+    {% if can_delete_files %}<th></th>{% endif %}
+  </tr></thead>
   <tbody>
   {% for f in files %}
     <tr>
@@ -202,6 +207,20 @@
       </td>
       <td>{{ f.state }}</td>
       <td>{{ f.uploaded_at.strftime('%Y-%m-%d %H:%M') if f.uploaded_at else '—' }}</td>
+      {% if can_delete_files %}
+      <td style="text-align:right; white-space:nowrap">
+        <form method="post"
+              action="/dash/packages/{{ pkg.id }}/files/{{ f.id }}/delete?_csrf={{ csrf_token(request) }}"
+              class="inline"
+              data-fname={{ f.original_name|tojson }}
+              data-fsize="{{ f.size_bytes|bytes }}"
+              onsubmit="return confirm('Remove ' + this.dataset.fname + ' (' + this.dataset.fsize + ') from this package?\n\nThe file will be deleted from disk. The recipient\'s magic link keeps working; on next visit they\'ll see one fewer file.');">
+          <button class="btn btn-danger" type="submit"
+                  title="Remove this file"
+                  style="padding:3px 9px; font-size:12px">✕</button>
+        </form>
+      </td>
+      {% endif %}
     </tr>
   {% endfor %}
   </tbody>
