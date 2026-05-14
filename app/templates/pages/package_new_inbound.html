@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Request upload{% endblock %}
+{% block title %}Request a file{% endblock %}
 {% block content %}
-<h1>Request files from a customer</h1>
+<h1>Request a file or files from someone</h1>
 <div class="panel" style="max-width:680px">
 <form method="post" action="/dash/packages/new/inbound?_csrf={{ csrf_token(request) }}">
   <label>Title</label>
