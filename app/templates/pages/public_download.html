@@ -9,7 +9,16 @@
   <h1>{{ pkg.title }}</h1>
   <p class="muted">Shared with {{ pkg.recipient_name }} — expires {{ pkg.expires_at.strftime('%Y-%m-%d %H:%M UTC') }}</p>
   {% if pkg.note %}<div style="white-space:pre-wrap; margin:12px 0; padding:10px; border-left:3px solid var(--accent); background:rgba(79,158,237,0.05)">{{ pkg.note }}</div>{% endif %}
-  <h2>Files ({{ files|length }})</h2>
+  <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:18px">
+    <h2 style="margin:0">Files ({{ files|length }})</h2>
+    {% if files|length > 1 and pkg.storage_backend == 'local' %}
+    {% set total = files|sum(attribute='size_bytes') %}
+    <a class="btn" href="/p/{{ token }}/zip"
+       title="Bundle all {{ files|length }} files into a single ZIP and download">
+      ⬇ Download all as .zip <span class="muted" style="font-weight:normal; font-size:12px">({{ total|bytes }})</span>
+    </a>
+    {% endif %}
+  </div>
   {% for f in files %}
     <div class="file-row">
       <div style="flex:1">{{ f.original_name }}<br><span class="muted" style="font-size:12px">{{ f.size_bytes|bytes }}</span></div>

@@ -9,15 +9,16 @@ import logging
 import urllib.parse
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_db
 from app.models import AccessLog, MagicLinkToken, Package, PackageFile
 from app.storage import get_backend
+from app.storage.local import LocalStorage
 from app.templating import templates
-from app.utils import gen_id, hash_token, sanitize_filename, utcnow
+from app.utils import gen_id, hash_token, sanitize_filename, stream_zip_files, utcnow
 from app.webhooks import fire_event
 
 log = logging.getLogger(__name__)
@@ -106,6 +107,81 @@ async def public_landing(raw: str, request: Request, db: AsyncSession = Depends(
     return templates.TemplateResponse(
         request, "pages/public_upload.html",
         {"pkg": pkg, "files": files, "token": raw},
+    )
+
+
+@router.get("/p/{raw}/zip")
+async def public_download_zip(
+    raw: str, request: Request, db: AsyncSession = Depends(get_db),
+):
+    """Bundle all completed files in a download-purpose package into a
+    single streamed ZIP. Local-storage only at v1."""
+    resolved = await _resolve_token(db, raw)
+    if not resolved:
+        await _audit(db, request, action="token_invalid")
+        await db.commit()
+        return _render_dead(request, "invalid")
+    tok, pkg = resolved
+    dead = _link_dead(tok, pkg)
+    if dead or tok.purpose != "download":
+        await _audit(db, request, action=dead or "token_invalid", token=tok)
+        await db.commit()
+        return _render_dead(request, (dead or "token_invalid").removeprefix("token_"))
+
+    if pkg.storage_backend != "local":
+        raise HTTPException(status_code=400,
+                            detail="bulk zip download is only available for local-storage packages")
+
+    files = (await db.scalars(
+        select(PackageFile).where(
+            PackageFile.package_id == pkg.id,
+            PackageFile.state == "complete",
+        ).order_by(PackageFile.created_at)
+    )).all()
+    if not files:
+        raise HTTPException(status_code=404, detail="no files to download")
+
+    # Resolve disk paths via the backend (with its safety guard against
+    # storage-key traversal).
+    backend = LocalStorage()
+    members: list[tuple[str, str]] = []
+    total_bytes = 0
+    seen_names: set[str] = set()
+    for pf in files:
+        # Disambiguate duplicate filenames inside the zip
+        arc = pf.original_name
+        n = 2
+        while arc in seen_names:
+            base, _, ext = pf.original_name.rpartition(".")
+            arc = f"{base} ({n}).{ext}" if ext else f"{pf.original_name} ({n})"
+            n += 1
+        seen_names.add(arc)
+        ticket = await backend.get_download_ticket(pkg.id, pf.id, pf.storage_key, pf.original_name)
+        if not ticket.stream_path:
+            continue
+        members.append((arc, ticket.stream_path))
+        total_bytes += pf.size_bytes or 0
+
+    # Audit + webhook fire
+    await _audit(db, request, action="file_download_zip", token=tok,
+                 details={"file_count": len(members), "total_bytes": total_bytes})
+    await db.commit()
+    try:
+        await fire_event(db, "package.downloaded", package_id=pkg.id, payload={
+            "kind": "zip", "file_count": len(members), "total_bytes": total_bytes,
+            "ip": request.client.host if request.client else None,
+        })
+    except Exception:
+        log.exception("webhook fire failed for pkg.downloaded (zip)")
+
+    # Build a sensible filename. Sanitize the package title for filesystem safety.
+    safe_title = sanitize_filename(pkg.title or "package").rstrip(".") or "package"
+    zip_name = f"{safe_title}.zip"
+    quoted = urllib.parse.quote(zip_name)
+    return StreamingResponse(
+        stream_zip_files(members),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quoted}"},
     )
 
 
