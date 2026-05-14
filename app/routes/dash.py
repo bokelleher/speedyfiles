@@ -424,6 +424,7 @@ async def package_detail(
     user: User = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from sqlalchemy import and_, func as _func, distinct
     pkg = await db.get(Package, pkg_id)
     if not pkg:
         raise HTTPException(status_code=404)
@@ -441,10 +442,74 @@ async def package_detail(
         select(AccessLog).where(AccessLog.package_id == pkg_id)
         .order_by(AccessLog.ts.desc()).limit(50)
     )).all()
+
+    # ------------------------------------------------------------------
+    # Recipient-activity summary — distilled from access_log
+    # ------------------------------------------------------------------
+    # Counts of relevant magic-link actions:
+    action_counts: dict[str, int] = {}
+    rows = (await db.execute(
+        select(AccessLog.action, _func.count())
+        .where(AccessLog.package_id == pkg_id, AccessLog.user_id.is_(None))
+        .group_by(AccessLog.action)
+    )).all()
+    for action, count in rows:
+        action_counts[action] = count
+
+    first_view = await db.scalar(
+        select(_func.min(AccessLog.ts))
+        .where(AccessLog.package_id == pkg_id,
+               AccessLog.action == "token_view")
+    )
+    last_activity = await db.scalar(
+        select(_func.max(AccessLog.ts))
+        .where(AccessLog.package_id == pkg_id,
+               AccessLog.user_id.is_(None),
+               AccessLog.action.in_(("token_view", "file_download",
+                                      "file_upload_complete")))
+    )
+    distinct_ips = await db.scalar(
+        select(_func.count(distinct(AccessLog.ip)))
+        .where(AccessLog.package_id == pkg_id,
+               AccessLog.user_id.is_(None),
+               AccessLog.ip.is_not(None))
+    ) or 0
+
+    # Per-file download counts (parse details_json with SQLite's JSON1).
+    # If JSON1 isn't available the call will throw → fall back to {}.
+    file_downloads: dict[str, int] = {}
+    try:
+        from sqlalchemy import text as _text
+        rows = (await db.execute(_text("""
+            SELECT json_extract(details_json, '$.file_id') AS fid, COUNT(*) AS n
+              FROM access_log
+             WHERE package_id = :pid
+               AND action = 'file_download'
+               AND fid IS NOT NULL
+             GROUP BY fid
+        """), {"pid": pkg_id})).all()
+        file_downloads = {r[0]: r[1] for r in rows}
+    except Exception:
+        log.exception("JSON1 not available; per-file download counts skipped")
+
+    activity = {
+        "first_view": first_view,
+        "last_activity": last_activity,
+        "view_count": action_counts.get("token_view", 0),
+        "download_count": action_counts.get("file_download", 0),
+        "upload_count": action_counts.get("file_upload_complete", 0),
+        "invalid_count": (action_counts.get("token_invalid", 0)
+                          + action_counts.get("token_expired", 0)
+                          + action_counts.get("token_revoked", 0)),
+        "distinct_ips": distinct_ips,
+        "file_downloads": file_downloads,
+    }
+
     return templates.TemplateResponse(
         request, "pages/package_detail.html",
         {"user": user, "pkg": pkg, "files": files, "tokens": tokens,
-         "logs": logs, "now": utcnow(), "base_url": settings.public_base_url},
+         "logs": logs, "now": utcnow(), "base_url": settings.public_base_url,
+         "activity": activity},
     )
 
 

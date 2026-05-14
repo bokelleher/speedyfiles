@@ -70,3 +70,38 @@ def fmt_transfer_stats(bytes_n: int | None, ms: int | None) -> str:
         return ""
     bps = bytes_n * 1000.0 / ms
     return f"Transferred {fmt_bytes(bytes_n)} in {fmt_duration_ms(ms)} ({fmt_bytes(int(bps))}/s)"
+
+
+def fmt_relative(dt: datetime | None) -> str:
+    """'just now', '4 minutes ago', '2 hours ago', '3 days ago', '2 weeks ago'."""
+    if dt is None:
+        return "never"
+    if dt.tzinfo is not None:
+        dt = dt.replace(tzinfo=None)
+    delta = utcnow() - dt
+    seconds = int(delta.total_seconds())
+    if seconds < 45:
+        return "just now"
+    if seconds < 90:
+        return "a minute ago"
+    minutes = seconds // 60
+    if minutes < 45:
+        return f"{minutes} minutes ago"
+    if minutes < 90:
+        return "an hour ago"
+    hours = minutes // 60
+    if hours < 22:
+        return f"{hours} hours ago"
+    if hours < 36:
+        return "a day ago"
+    days = hours // 24
+    if days < 7:
+        return f"{days} days ago"
+    if days < 14:
+        return "a week ago"
+    if days < 60:
+        return f"{days // 7} weeks ago"
+    months = days // 30
+    if months < 12:
+        return f"{months} months ago"
+    return f"{days // 365} years ago"

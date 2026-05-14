@@ -171,6 +171,66 @@
   {% if pkg.note %}<div><b>Note:</b> {{ pkg.note }}</div>{% endif %}
 </div>
 
+{# ----- Recipient activity ----- #}
+<h2>Recipient activity</h2>
+<div class="panel">
+  {% if activity.view_count == 0 and activity.upload_count == 0 and activity.download_count == 0 %}
+    <div class="muted" style="font-size:14px">
+      <span style="color:var(--muted)">⚪</span>
+      Not opened yet.
+      {% if pkg.status == 'active' %}
+        The magic link was emailed
+        {% set link_token = tokens|selectattr('purpose','equalto',('download' if pkg.direction=='outbound' else 'upload'))|first %}
+        {% if link_token %}{{ link_token.created_at|relative }}{% endif %}.
+      {% elif pkg.status == 'draft' %}
+        Send the package to mint the magic link first.
+      {% endif %}
+    </div>
+  {% else %}
+  <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px">
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; font-weight:600; margin-bottom:4px">First opened</div>
+      <div>{{ activity.first_view.strftime('%Y-%m-%d %H:%M UTC') if activity.first_view else '—' }}</div>
+      <div class="muted" style="font-size:12px">{{ activity.first_view|relative if activity.first_view else '' }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; font-weight:600; margin-bottom:4px">Last activity</div>
+      <div>{{ activity.last_activity.strftime('%Y-%m-%d %H:%M UTC') if activity.last_activity else '—' }}</div>
+      <div class="muted" style="font-size:12px">{{ activity.last_activity|relative if activity.last_activity else '' }}</div>
+    </div>
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; font-weight:600; margin-bottom:4px">
+        {% if pkg.direction == 'outbound' %}Page views{% else %}Page views{% endif %}
+      </div>
+      <div style="font-size:20px; font-weight:600">{{ activity.view_count }}</div>
+      {% if activity.distinct_ips > 1 %}
+      <div class="muted" style="font-size:12px">from {{ activity.distinct_ips }} different IPs</div>
+      {% endif %}
+    </div>
+    {% if pkg.direction == 'outbound' %}
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; font-weight:600; margin-bottom:4px">File downloads</div>
+      <div style="font-size:20px; font-weight:600">{{ activity.download_count }}</div>
+      {% if activity.download_count > 0 and files %}
+      <div class="muted" style="font-size:12px">across {{ files|length }} file{{ '' if files|length == 1 else 's' }}</div>
+      {% endif %}
+    </div>
+    {% else %}
+    <div>
+      <div class="muted" style="font-size:11px; text-transform:uppercase; letter-spacing:0.06em; font-weight:600; margin-bottom:4px">Files uploaded</div>
+      <div style="font-size:20px; font-weight:600">{{ activity.upload_count }}</div>
+    </div>
+    {% endif %}
+  </div>
+  {% if activity.invalid_count > 0 %}
+  <div class="muted" style="font-size:12px; margin-top:14px; padding-top:10px; border-top:1px solid var(--border)">
+    ⚠ <b>{{ activity.invalid_count }}</b> failed-link attempt{{ '' if activity.invalid_count == 1 else 's' }}
+    (expired, revoked, or invalid token). See the audit log below for details.
+  </div>
+  {% endif %}
+  {% endif %}
+</div>
+
 <h2>Magic link</h2>
 <div class="panel">
 {% for t in tokens %}
@@ -190,9 +250,11 @@
 {% if files %}
 {% set can_delete_files = pkg.direction == 'outbound'
                           and pkg.status in ('draft', 'active') %}
+{% set show_downloads = pkg.direction == 'outbound' %}
 <table>
   <thead><tr>
     <th>Name</th><th>Size</th><th>Transfer</th><th>State</th><th>Uploaded</th>
+    {% if show_downloads %}<th>Downloads</th>{% endif %}
     {% if can_delete_files %}<th></th>{% endif %}
   </tr></thead>
   <tbody>
@@ -207,6 +269,14 @@
       </td>
       <td>{{ f.state }}</td>
       <td>{{ f.uploaded_at.strftime('%Y-%m-%d %H:%M') if f.uploaded_at else '—' }}</td>
+      {% if show_downloads %}
+      {% set dl_count = activity.file_downloads.get(f.id, 0) %}
+      <td>
+        {% if dl_count > 0 %}
+          <span style="color:var(--good)">{{ dl_count }}</span>
+        {% else %}<span class="muted">0</span>{% endif %}
+      </td>
+      {% endif %}
       {% if can_delete_files %}
       <td style="text-align:right; white-space:nowrap">
         <form method="post"
