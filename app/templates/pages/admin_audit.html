@@ -36,7 +36,7 @@
     <tr>
       <td class="mono" style="font-size:12px; white-space:nowrap">{{ r.ts.strftime('%Y-%m-%d %H:%M:%S') }}</td>
       <td><code style="font-size:12px">{{ r.action }}</code></td>
-      <td>{% if r.user_id %}user #{{ r.user_id }}{% else %}<span class="muted">magic link</span>{% endif %}</td>
+      <td>{% if r.user_id %}{% set u = users.get(r.user_id) %}{% if u %}<span title="{{ u.email }}">{{ u.display_name }}</span>{% else %}<span class="muted">user #{{ r.user_id }} (deleted)</span>{% endif %}{% else %}<span class="muted">magic link</span>{% endif %}</td>
       <td>{% if r.package_id %}<a href="/dash/packages/{{ r.package_id }}" class="mono" style="font-size:11px">{{ r.package_id[:14] }}…</a>
           {% else %}<span class="muted">—</span>{% endif %}</td>
       <td class="mono" style="font-size:12px">{{ r.ip or '—' }}</td>
