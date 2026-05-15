@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Send files{% endblock %}
 {% block content %}
-<h1>Send files to a customer</h1>
+<h1>Send files to someone</h1>
 <div class="panel" style="max-width:780px">
 <form id="outbound-form" method="post" action="/dash/packages/new/outbound?_csrf={{ csrf_token(request) }}" enctype="multipart/form-data">
   <label>Title</label>
